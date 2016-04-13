@@ -3,7 +3,7 @@ CFLAGS=-g -std=$(STD) -pedantic -Wall $(IDIRS) $(LDIRS) $(LIBS)
 STD=c99
 IDIRS=-I/usr/local/include -I..
 LDIRS=-L/usr/local/lib
-LIBS=-lcheck -lutil -liconv
+LIBS=-lcheck -lutil -liconv -lFLAC
 
 all: decode_test ipc_test
 child_main.o file.o flac.o parent_main.o:

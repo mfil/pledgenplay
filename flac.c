@@ -4,52 +4,65 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <FLAC/callback.h>
+#include <FLAC/stream_decoder.h>
+
 #include "comm.h"
 #include "file.h"
 #include "flac.h"
 
-static size_t		blocksize(unsigned char *);
-static u_int64_t	get_samples(unsigned char *);
-static u_int64_t	get_rate(unsigned char *);
+static size_t			blocksize(unsigned char *);
+static u_int64_t		get_samples(unsigned char *);
+static u_int64_t		get_rate(unsigned char *);
+
+static FLAC__StreamDecoder	*dec;
 
 int
-extract_meta_flac(int fd)
+init_decoder_flac(int out_format)
 {
-	off_t		prev_pos;
-	unsigned char	mdata_hdr[4], str_info[34], id3_hdr[10], *mdata;
+	if ((dec = FLAC__stream_decoder_new()) == NULL)
+		return (-1);
+	return (-1);
+}
+
+int
+extract_meta_flac(FILE *f)
+{
+	long		prev_pos;
+	unsigned char	mdata_hdr[4], str_info[34], id3_hdr[10], *mdata = NULL;
 	size_t		len;
 	u_int64_t	rate, samples, t; /* t = time in s (samples/rate) */
 	char		*t_str;
 	int		rv, id3v2_found;
 
 	/* Memorize position in file. */
-	if ((prev_pos = lseek(fd, 0, SEEK_CUR)) == -1)
+	if ((prev_pos = ftell(f)) == -1)
 		return (-1);
-	if (lseek(fd, 0, SEEK_SET) == -1)
+	if (fseek(f, 0, SEEK_SET) != 0)
 		return (-1);
 	/* Check if the file starts with an ID3v2 tag. */
-	if (pread(fd, id3_hdr, sizeof(id3_hdr), 0) < sizeof(id3_hdr))
+	if (fread(id3_hdr, sizeof(id3_hdr), 1, f) < 1)
 		return (-1);
 	if (memcmp(id3_hdr, "ID3", 3) == 0) {
-		if (lseek(fd, sizeof(id3_hdr), SEEK_CUR) == -1)
-			return (-1);
 		len = (id3_hdr[6] << 21) + (id3_hdr[7] << 14) +
 		    (id3_hdr[8] << 7) + id3_hdr[9];
 		if ((mdata = malloc(len)) == NULL)
 			fatal("malloc");
-		if (read(fd, mdata, len) < len)
+		if (fread(mdata, len, 1, f) < 1)
 			return (-1);
 		if ((rv = parse_id3v2(id3_hdr[5], mdata, len)) == -1)
 			return (-1);
 		id3v2_found = 1;
 	}
+	else if (fseek(f, 0, SEEK_SET) != 0)
+		return (-1);
 	/*
 	 * Read the STREAMINFO block. We do this even if an ID3v2 tag was found
 	 * in order to calculate the time.
 	 */
-	if (lseek(fd, 4, SEEK_CUR) == -1)
+	if (fseek(f, 4, SEEK_CUR) != 0)
 		return (-1);
-	if (read(fd, mdata_hdr, sizeof(mdata_hdr)) < sizeof(mdata_hdr))
+	if (fread(mdata_hdr, sizeof(mdata_hdr), 1, f) < 1)
 		return (-1);
 	if ((mdata_hdr[0] & 0x7f) != 0 || blocksize(mdata_hdr) !=
 	    sizeof(str_info)) {
@@ -60,7 +73,7 @@ extract_meta_flac(int fd)
 		return (-1);
 	}
 	/* Read the STREAMINFO block and calculate the running time. */
-	if (read(fd, str_info, sizeof(str_info)) < sizeof(str_info))
+	if (fread(str_info, sizeof(str_info), 1, f) < 1)
 		return (-1);
 	rate = get_rate(str_info);
 	if (rate > 655350 || rate == 0)
@@ -84,17 +97,17 @@ extract_meta_flac(int fd)
 
 	/* Look for the VORBIS_COMMENT block. */
 	while (1) {
-		if (read(fd, mdata_hdr, sizeof(mdata_hdr)) < sizeof(mdata_hdr))
+		if (fread(mdata_hdr, sizeof(mdata_hdr), 1, f) < 1)
 			return (-1);
 		if ((mdata_hdr[0] & 0x7f) == 4) {
-			/* Found a VORBIS COMMENT block. */
+			/* Found a VORBIS_COMMENT block. */
 			len = blocksize(mdata_hdr);
 			if ((mdata = malloc(len)) == NULL)
 				fatal("malloc");
-			if (read(fd, mdata, len) < len)
+			if (fread(mdata, len, 1, f) < 1)
 				return (-1);
 			/* Return to the previous position in the file. */
-			if (lseek(fd, prev_pos, SEEK_SET) == -1)
+			if (fseek(f, prev_pos, SEEK_SET) != 0)
 				return (-1);
 			rv = parse_vorbis_comment(mdata, len);
 			goto done;
@@ -103,13 +116,13 @@ extract_meta_flac(int fd)
 			/*
 			 * The header of the last metadata block has the first
 			 * bit set to 1, so this is the last block, and we
-			 * have not found any VORBIS COMMENT block.
+			 * have not found a VORBIS_COMMENT block.
 			 */
-			if (lseek(fd, prev_pos, SEEK_SET) == -1)
+			if (fseek(f, prev_pos, SEEK_SET) == -1)
 				return (-1);
 			return (0);
 		}
-		else if (lseek(fd, blocksize(mdata_hdr), SEEK_CUR) == -1)
+		else if (fseek(f, blocksize(mdata_hdr), SEEK_CUR) != 0)
 			return (-1);
 	}
 

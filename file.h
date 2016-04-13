@@ -3,7 +3,7 @@
 
 #define ID3_HDR_LEN	10
 
-int	filetype(int);
+int	filetype(FILE *);
 int	parse_id3v2(unsigned char, unsigned char *, ssize_t);
 int	parse_vorbis_comment(unsigned char *, ssize_t);
 

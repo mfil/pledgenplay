@@ -20,7 +20,10 @@ static void	new_file(int);
 static int	extract_meta(void);
 
 static struct imsgbuf	ibuf;
-static int		in_fd = -1, format = UNKNOWN;
+static struct {
+	FILE	*f;
+	int	fmt;
+} infile;
 
 int
 child_main(int sv[2], int output_type, int out_fd)
@@ -54,13 +57,15 @@ child_main(int sv[2], int output_type, int out_fd)
 					new_file(imsg.fd);
 					break;
 				case (CMD_META):
-					if (in_fd == -1)
+					if (infile.f == NULL)
 						file_err();
 					else
 						extract_meta();
 					break;
 				case (CMD_EXIT):
 					_exit(0);
+				case (CMD_PLAY):
+					close(out_fd);
 				}
 				imsg_free(&imsg);
 			}
@@ -76,23 +81,35 @@ new_file(int fd)
 {
 	char	msg_cannot_read[] = "Unable to read the file.";
 	char	msg_unknown[] = "Unknown file format.";
-	int	fmt;
 
-	if ((fmt = filetype(fd)) == -1) {
-		in_fd = -1;
-		format = UNKNOWN;
+	/* Close the old file (if there was one). */
+	if (infile.f != NULL) {
+		if (fclose(infile.f) != 0)
+			msgstr(MSG_WARN, "error closing input file.");
+		infile.f = NULL;
+		infile.fmt = UNKNOWN;
+	}
+	/* Open the new one. */
+	if ((infile.f = fdopen(fd, "rb")) == NULL) {
 		msg(MSG_FILE_INV, msg_cannot_read,
 		    (u_int16_t)sizeof(msg_cannot_read));
+		infile.fmt = UNKNOWN;
+		return;
 	}
-	else if (fmt == UNKNOWN) {
-		in_fd = -1;
-		msg(MSG_FILE_INV, msg_unknown, (u_int16_t)sizeof(msg_unknown));
+	/* Determine the file format. */
+	if ((infile.fmt = filetype(infile.f)) == -1) {
+		msg(MSG_FILE_INV, msg_cannot_read,
+		    (u_int16_t)sizeof(msg_cannot_read));
+		if (fclose(infile.f) != 0)
+			msgstr(MSG_WARN, "failed to close input file.");
+		infile.f = NULL;
+		infile.fmt = UNKNOWN;
 	}
-	else {
-		in_fd = fd;
-		format = fmt;
+	else if (infile.fmt == UNKNOWN) {
+		file_err();
+	}
+	else
 		msg(MSG_ACK_FILE, NULL, 0);
-	}
 }
 
 static int
@@ -100,12 +117,12 @@ extract_meta(void)
 {
 	int	rv;
 
-	switch (format) {
+	switch (infile.fmt) {
 	case (FLAC):
-		rv = extract_meta_flac(in_fd);
+		rv = extract_meta_flac(infile.f);
 		break;
 	default:
-		return (-1);
+		rv = -1;
 	}
 	if (rv == -1) {
 		file_err();
@@ -141,9 +158,10 @@ msgstr(int type, char *msg)
 void
 file_err(void)
 {
-	close(in_fd);
-	in_fd = -1;
-	format = UNKNOWN;
+	if (infile.f != NULL && fclose(infile.f) != 0)
+		msgstr(MSG_WARN, "error closing input file.");
+	infile.f = NULL;
+	infile.fmt = UNKNOWN;
 	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, NULL,
 	    0) == -1)
 		_err("imsg");

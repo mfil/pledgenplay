@@ -153,6 +153,12 @@ fail:
 	return (NULL);
 }
 
+int
+decode(char *infile, char *outfile, int format)
+{
+	return (0);
+}
+
 void
 free_meta(struct meta *mdata)
 {

@@ -6,55 +6,56 @@
 #include <assert.h>
 #include <check.h>
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <imsg.h>
 #include <poll.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
 #include "comm.h"
 #include "file.h"
 #include "pnp.h"
-
 /* Filetype detection */
 
 START_TEST (filetype_recognizes_flac)
 {
-	int	fd;
-	fd = open("./testdata/test.flac", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), FLAC);
-	close(fd);
+	FILE	*f;
+	f = fopen("./testdata/test.flac", "rb");
+	assert(f != NULL);
+	ck_assert_int_eq(filetype(f), FLAC);
+	fclose(f);
 }
 END_TEST
 
 START_TEST (filetype_recognizes_mp3)
 {
-	int	fd;
-	fd = open("./testdata/test.mp3", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), MP3);
-	close(fd);
+	FILE	*f;
+	f = fopen("./testdata/test.mp3", "rb");
+	assert(f != NULL);
+	ck_assert_int_eq(filetype(f), MP3);
+	fclose(f);
 }
 END_TEST
 
 START_TEST (filetype_recognizes_wav)
 {
-	int	fd;
-	fd = open("./testdata/test.wav", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), WAVE_PCM);
-	close(fd);
+	FILE	*f;
+	f = fopen("./testdata/test.wav", "rb");
+	assert(f != NULL);
+	ck_assert_int_eq(filetype(f), WAVE_PCM);
+	fclose(f);
 }
 END_TEST
 
 START_TEST (filetype_recognizes_unknown)
 {
-	int	fd;
-	fd = open("./testdata/random_garbage", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), UNKNOWN);
-	close(fd);
+	FILE	*f;
+	f = fopen("./testdata/random_garbage", "rb");
+	assert(f != NULL);
+	ck_assert_int_eq(filetype(f), UNKNOWN);
+	fclose(f);
 }
 END_TEST
 
@@ -62,18 +63,11 @@ char	*files[] = {"./testdata/with_id3v2.wav", "./testdata/with_id3v2.flac","./te
 int	types[] = {WAVE_PCM, FLAC, MP3};
 START_TEST (filetype_skips_id3v2)
 {
-	int	fd;
-	fd = open(files[_i], O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), types[_i]);
-	close(fd);
-}
-END_TEST
-
-START_TEST (filetype_returns_min_one_on_inval_fd)
-{
-	int	fd = 23;
-	ck_assert_int_eq(filetype(fd), -1);
+	FILE	*f;
+	f = fopen(files[_i], "rb");
+	assert(f != NULL);
+	ck_assert_int_eq(filetype(f), types[_i]);
+	fclose(f);
 }
 END_TEST
 
@@ -214,28 +208,59 @@ START_TEST (get_meta_handles_id3v2_in_flac)
 }
 END_TEST
 
+START_TEST (decode_converts_flac_to_raw)
+{
+	pid_t		child_pid;
+	int		rv, cmp, sv[2];
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
+		err(1, "socketpair");
+	if (remove("./scratchspace/test.raw") == -1 && errno != ENOENT)
+		err(1, "remove");
+	child_pid = fork();
+	switch (child_pid) {
+	case -1:
+		err(1, "fork");
+	case 0:
+		/* Child process */
+		child_main(sv, 0, -1);
+	default:
+		/* Parent process */
+		close(sv[1]);
+		rv = decode("./testdata/test.flac", "./scratchspace/test.raw",
+		    OUT_RAW);
+		ck_assert_int_eq(rv, 0);
+		cmp = system("cmp ./testdata/test.raw ./scratchspace/test.raw 1>/dev/null");
+		ck_assert_int_eq(cmp, 0);
+	}
+}
+END_TEST
+
 Suite
 *decode_suite(void)
 {
 	Suite *s;
-	TCase *tc_filetype, *tc_meta;
+	TCase *tc_filetype, *tc_meta, *tc_dec;
 
 	s = suite_create("Decode");
 	tc_filetype = tcase_create("Filetype detection");
 	tc_meta = tcase_create("Metadata extraction");
+	tc_dec = tcase_create("Decoding");
 
 	tcase_add_test(tc_filetype, filetype_recognizes_flac);
 	tcase_add_test(tc_filetype, filetype_recognizes_mp3);
 	tcase_add_test(tc_filetype, filetype_recognizes_wav);
 	tcase_add_test(tc_filetype, filetype_recognizes_unknown);
 	tcase_add_loop_test(tc_filetype, filetype_skips_id3v2, 0, 3);
-	tcase_add_test(tc_filetype, filetype_returns_min_one_on_inval_fd);
 	suite_add_tcase(s, tc_filetype);
 
 	tcase_add_test(tc_meta, get_meta_returns_NULL_when_no_file_open);
 	tcase_add_test(tc_meta, get_meta_handles_vorbis_comment_in_flac);
 	tcase_add_test(tc_meta, get_meta_handles_id3v2_in_flac);
 	suite_add_tcase(s, tc_meta);
+
+	tcase_add_test(tc_dec, decode_converts_flac_to_raw);
+	suite_add_tcase(s, tc_dec);
 	
 	return (s);
 }

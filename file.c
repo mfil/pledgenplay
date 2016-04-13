@@ -15,33 +15,34 @@ static size_t	be_to_uint(unsigned char *);
 static size_t	le_to_uint(unsigned char *);
 
 int
-filetype(int fd)
+filetype(FILE *f)
 {
-	ssize_t			n_read;
+	size_t			nread;
 	unsigned char		buf[22];
 	const char		wave_pcm_tag[2] = {0x01, 0x00};
+	unsigned int		tag_size;
 
-	if ((n_read = read(fd, buf, 22)) < 0)
+	if ((nread = fread(buf, 1, 22, f)) < 22 && ferror(f) != 0)
 		return (-1);
 	/* skip ID3v2 tag, if present. */
-	if (n_read >= 3 && memcmp(buf, "ID3", 3) == 0) {
-		if (n_read <= 10)
+	if (nread >= 3 && memcmp(buf, "ID3", 3) == 0) {
+		if (nread <= 10)
 			return (UNKNOWN);
-		unsigned int	tag_size;
 		tag_size = (buf[6] << 21) + (buf[7] << 14) + (buf[8] << 7)
 		    + buf[9];
-		if (lseek(fd, tag_size+10, SEEK_SET) == -1)
+		if (fseek(f, tag_size+10, SEEK_SET) != 0)
 			return (-1);
-		if ((n_read = read(fd, buf, 22)) == -1)
+		if ((nread = fread(buf, 1, 22, f)) < 22 && ferror(f) != 0)
 			return (-1);
 	}
-	if (lseek(fd, 0, SEEK_SET) == -1)
+	if (fseek(f, 0, SEEK_SET) != 0)
 		return (-1);
-	if (n_read >= 2 && buf[0] == 0xff && (buf[1] & 0xe0) == 0xe0)
+	if (nread >= 2 && buf[0] == 0xff && (buf[1] & 0xe0) == 0xe0)
+		/* mp3 framesync: 12 bits set to 1. */
 		return (MP3);
-	if (n_read >= 4 && memcmp(buf, "fLaC", 4) == 0)
+	if (nread >= 4 && memcmp(buf, "fLaC", 4) == 0)
 		return (FLAC);
-	if (n_read == 22 && memcmp(buf, "RIFF", 4) == 0 &&
+	if (nread == 22 && memcmp(buf, "RIFF", 4) == 0 &&
 	    memcmp(buf+8, "WAVE", 4) == 0 &&
 	    memcmp(buf+12, "fmt ", 4) == 0 &&
 	    memcmp(buf+20, wave_pcm_tag, sizeof(wave_pcm_tag)) == 0)
