@@ -91,23 +91,12 @@ new_file(int fd)
 	}
 	/* Open the new one. */
 	if ((infile.f = fdopen(fd, "rb")) == NULL) {
-		msg(MSG_FILE_INV, msg_cannot_read,
-		    (u_int16_t)sizeof(msg_cannot_read));
-		infile.fmt = UNKNOWN;
+		file_err();
 		return;
 	}
 	/* Determine the file format. */
-	if ((infile.fmt = filetype(infile.f)) == -1) {
-		msg(MSG_FILE_INV, msg_cannot_read,
-		    (u_int16_t)sizeof(msg_cannot_read));
-		if (fclose(infile.f) != 0)
-			msgstr(MSG_WARN, "failed to close input file.");
-		infile.f = NULL;
-		infile.fmt = UNKNOWN;
-	}
-	else if (infile.fmt == UNKNOWN) {
+	if ((infile.fmt = filetype(infile.f)) == -1 || infile.fmt == UNKNOWN)
 		file_err();
-	}
 	else
 		msg(MSG_ACK_FILE, NULL, 0);
 }

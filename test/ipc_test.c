@@ -200,7 +200,7 @@ START_TEST (child_acks_new_file_if_valid)
 }
 END_TEST
 
-START_TEST (child_sends_MSG_FILE_INV_on_invalid_file)
+START_TEST (child_sends_MSG_FILE_ERR_on_invalid_file)
 {
 	struct pollfd	pfd;
 	struct imsgbuf	ibuf;
@@ -244,7 +244,7 @@ START_TEST (child_sends_MSG_FILE_INV_on_invalid_file)
 			errx(1, "imsg_read failed.");
 		if (imsg_get(&ibuf, &msg) == -1)
 			errx(1, "imsg_get failed.");
-		ck_assert_int_eq((int)msg.hdr.type, MSG_FILE_INV);
+		ck_assert_int_eq((int)msg.hdr.type, MSG_FILE_ERR);
 	}
 }
 END_TEST
@@ -262,7 +262,7 @@ Suite
 
 	tcase_add_test(tc_cmd, child_exits_on_CMD_EXIT);
 	tcase_add_test(tc_cmd, child_acks_new_file_if_valid);
-	tcase_add_test(tc_cmd, child_sends_MSG_FILE_INV_on_invalid_file);
+	tcase_add_test(tc_cmd, child_sends_MSG_FILE_ERR_on_invalid_file);
 	tcase_add_test(tc_signals, parent_handles_child_exit);
 	tcase_add_test(tc_signals, parent_ignores_false_SIGCHLD);
 	tcase_add_loop_test(tc_signals, parent_handles_term_signal, 0, 3);
