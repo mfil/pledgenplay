@@ -19,6 +19,8 @@ enum	{NEW_FILE,	/* Send file descriptor to child */
 
 void		msg(int, void *, size_t);
 void		msgstr(int, char *);
+void		msgwarn(char *);
+void		msgwarnx(char *);
 void		file_err(void);
 __dead void	fatal(char *);
 __dead void	_err(char *);

@@ -79,13 +79,10 @@ child_main(int sv[2], int output_type, int out_fd)
 static void
 new_file(int fd)
 {
-	char	msg_cannot_read[] = "Unable to read the file.";
-	char	msg_unknown[] = "Unknown file format.";
-
 	/* Close the old file (if there was one). */
 	if (infile.f != NULL) {
 		if (fclose(infile.f) != 0)
-			msgstr(MSG_WARN, "error closing input file.");
+			msgwarn("fclose");
 		infile.f = NULL;
 		infile.fmt = UNKNOWN;
 	}
@@ -130,8 +127,8 @@ msg(int type, void *data, size_t len)
 {
 	if (len > UINT16_MAX)
 		len = UINT16_MAX;
-	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, data, len)
-	    == -1)
+	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, data,
+	    (u_int16_t)len) == -1)
 		_err("imsg");
 }
 
@@ -140,15 +137,44 @@ void
 msgstr(int type, char *msg)
 {
 	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, msg,
-	    strlen(msg)+1) == -1)
+	    (u_int16_t)strlen(msg)+1) == -1)
 		_err("imsg");
+}
+
+void
+msgwarn(char *msg)
+{
+	struct ibuf	*buf;
+	char		*errmsg;
+	u_int16_t	msg_len, err_len;
+
+	errmsg = strerror(errno);
+	msg_len = (u_int16_t)strlen(msg);
+	err_len = (u_int16_t)strlen(errmsg);
+	buf = imsg_create(&ibuf, (u_int32_t)MSG_WARN, 0, getpid(),
+	    msg_len + err_len + 3);
+	if (buf == NULL)
+		_err("imsg");
+	if (imsg_add(buf, msg, msg_len) == -1 ||
+	    imsg_add(buf, ": ", 2) == -1 ||
+	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
+		_err("imsg");
+	imsg_close(&ibuf, buf);
+}
+
+void
+msgwarnx(char *msg)
+{
+	if (imsg_compose(&ibuf, (u_int32_t)MSG_WARN, 0, getpid(), -1, msg,
+	    strlen(msg)+1) == -1)
+	    	_err("imsg");
 }
 
 void
 file_err(void)
 {
 	if (infile.f != NULL && fclose(infile.f) != 0)
-		msgstr(MSG_WARN, "error closing input file.");
+		msgwarn("fclose");
 	infile.f = NULL;
 	infile.fmt = UNKNOWN;
 	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, NULL,

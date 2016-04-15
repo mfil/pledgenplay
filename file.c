@@ -143,15 +143,13 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 		}
 		if (frameflags[1] & 0x40) {
 			/* Encrypted frame. */
-			msgstr(MSG_WARN,
-			    "Encrypted id3v2 frames not supported.");
+			msgwarnx("Encrypted id3v2 frames not supported.");
 			id3 += framelen;
 			continue;
 		}
 		if (frameflags[1] & 0x80) {
 			/* Compressed frame. */
-			msgstr(MSG_WARN,
-			    "Compressed id3v2 frames not supported.");
+			msgwarnx("Compressed id3v2 frames not supported.");
 			id3 += framelen;
 			continue;
 		}
@@ -169,8 +167,7 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 		}
 		else {
 			/* Invalid */
-			msgstr(MSG_WARN,
-			    "Unknown text encoding in id3v2 frame.");
+			msgwarnx("Unknown text encoding in id3v2 frame.");
 			return (-1);
 		}
 		id3++;
@@ -180,7 +177,7 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 		utf8strp = utf8str;
 		if (iconv(conv, (char **)&id3, &framelen, &utf8strp, &utf8len)
 		    == -1) {
-			msgstr(MSG_WARN, "iconv failed.");
+			msgwarn("iconv");
 			free(utf8str);
 			return (-1);
 		}
@@ -189,7 +186,7 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 			/* The time is given in milliseconds. */
 			time = strtonum(utf8str, 0, INT_MAX, &errstr);
 			if (errstr == NULL) {
-				msgstr(MSG_WARN, "strtonum failed.");
+				msgwarn("strtonum");
 				return (-1);
 			}
 			time = time % 1000 < 500 ? time/1000 : time/1000 + 1;
