@@ -58,7 +58,7 @@ child_main(int sv[2], int output_type, int out_fd)
 					break;
 				case (CMD_META):
 					if (infile.f == NULL)
-						file_err();
+						file_errx("No input file.");
 					else
 						extract_meta();
 					break;
@@ -88,12 +88,12 @@ new_file(int fd)
 	}
 	/* Open the new one. */
 	if ((infile.f = fdopen(fd, "rb")) == NULL) {
-		file_err();
+		file_err("fdopen");
 		return;
 	}
 	/* Determine the file format. */
 	if ((infile.fmt = filetype(infile.f)) == -1 || infile.fmt == UNKNOWN)
-		file_err();
+		file_errx("Unsupported file format.");
 	else
 		msg(MSG_ACK_FILE, NULL, 0);
 }
@@ -111,7 +111,7 @@ extract_meta(void)
 		rv = -1;
 	}
 	if (rv == -1) {
-		file_err();
+		file_errx("Error while reading metadata.");
 		return (-1);
 	}
 	msg(META_END, NULL, 0);
@@ -171,16 +171,40 @@ msgwarnx(char *msg)
 }
 
 void
-file_err(void)
+file_err(char *msg)
 {
+	struct ibuf	*buf;
+	char		*errmsg;
+	u_int16_t	msg_len, err_len;
+
+	errmsg = strerror(errno);
+	msg_len = (u_int16_t)strlen(msg);
+	err_len = (u_int16_t)strlen(errmsg);
+	buf = imsg_create(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(),
+	    msg_len + err_len + 3);
+	if (buf == NULL)
+		_err("imsg");
+	if (imsg_add(buf, msg, msg_len) == -1 ||
+	    imsg_add(buf, ": ", 2) == -1 ||
+	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
+		_err("imsg");
+	imsg_close(&ibuf, buf);
 	if (infile.f != NULL && fclose(infile.f) != 0)
 		msgwarn("fclose");
 	infile.f = NULL;
 	infile.fmt = UNKNOWN;
-	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, NULL,
-	    0) == -1)
+}
+
+void
+file_errx(char *msg)
+{
+	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, msg,
+	    (u_int16_t)strlen(msg)+1) == -1)
 		_err("imsg");
-	return;
+	if (infile.f != NULL && fclose(infile.f) != 0)
+		msgwarn("fclose");
+	infile.f = NULL;
+	infile.fmt = UNKNOWN;
 }
 
 __dead void
