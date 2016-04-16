@@ -186,14 +186,23 @@ file_err(void)
 __dead void
 fatal(char *msg)
 {
-	char	*errstr;
-	int	len;
+	struct ibuf	*buf;
+	char		*errmsg;
+	u_int16_t	msg_len, err_len;
 
-	len = asprintf(&errstr, "%s: %s", msg, strerror(errno));
-	if (errstr == NULL)
-		_err("malloc");
-	if (imsg_compose(&ibuf, (u_int32_t)MSG_FATAL, 0, getpid(), -1, errstr,
-	    len+1) == -1 || imsg_flush(&ibuf) == -1)
+	errmsg = strerror(errno);
+	msg_len = (u_int16_t)strlen(msg);
+	err_len = (u_int16_t)strlen(errmsg);
+	buf = imsg_create(&ibuf, (u_int32_t)MSG_FATAL, 0, getpid(),
+	    msg_len + err_len + 3);
+	if (buf == NULL)
+		_err("imsg");
+	if (imsg_add(buf, msg, msg_len) == -1 ||
+	    imsg_add(buf, ": ", 2) == -1 ||
+	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
+		_err("imsg");
+	imsg_close(&ibuf, buf);
+	if (imsg_flush(&ibuf) == -1)
 		_err("imsg");
 	_exit(1);
 }
