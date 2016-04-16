@@ -110,10 +110,8 @@ extract_meta(void)
 	default:
 		rv = -1;
 	}
-	if (rv == -1) {
-		file_errx("Error while reading metadata.");
+	if (rv == -1)
 		return (-1);
-	}
 	msg(META_END, NULL, 0);
 	return (rv);
 }
