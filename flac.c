@@ -4,25 +4,122 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <FLAC/format.h>
 #include <FLAC/callback.h>
 #include <FLAC/stream_decoder.h>
 
 #include "comm.h"
 #include "file.h"
 #include "flac.h"
+#include "pnp.h"
 
 static size_t			blocksize(unsigned char *);
 static u_int64_t		get_samples(unsigned char *);
 static u_int64_t		get_rate(unsigned char *);
 
+void mdata_cb(const FLAC__StreamDecoder *, const FLAC__StreamMetadata *,
+    void *);
+FLAC__StreamDecoderWriteStatus write_cb_file_raw (const FLAC__StreamDecoder *,
+    const FLAC__Frame *, const FLAC__int32 *const [], void *);
+void err_cb (const FLAC__StreamDecoder *, const FLAC__StreamDecoderErrorStatus,
+    void *);
+
 static FLAC__StreamDecoder	*dec;
 
+struct flac_client_data		cdata;
+
 int
-init_decoder_flac(int out_format)
+init_decoder_flac(FILE *in, struct output *outp)
 {
+	FLAC__StreamDecoderWriteCallback	write_cb;
+	FLAC__StreamDecoderMetadataCallback	mdata_cb;
+
+	cdata.out = outp->out;
+	cdata.error = 0;
 	if ((dec = FLAC__stream_decoder_new()) == NULL)
 		return (-1);
-	return (-1);
+	switch (outp->format) {
+	case OUT_RAW:
+		write_cb = write_cb_file_raw;
+		mdata_cb = NULL;
+		break;
+	default:
+		return (-1);
+	}
+	if (FLAC__stream_decoder_init_FILE(dec, in, write_cb, mdata_cb, err_cb,
+	    &cdata) == FLAC__STREAM_DECODER_INIT_STATUS_OK)
+		return (-1);
+	return (0);
+}
+
+void
+mdata_cb(const FLAC__StreamDecoder *dec, const FLAC__StreamMetadata *mdata,
+    void *client_data)
+{
+	struct flac_client_data	*cd;
+
+	cd = (struct flac_client_data *)client_data;
+	if (mdata->type == FLAC__METADATA_TYPE_STREAMINFO) {
+		cd->samples = mdata->data.stream_info.total_samples;
+		cd->rate = mdata->data.stream_info.sample_rate;
+		cd->channels = mdata->data.stream_info.channels;
+	}
+}
+
+FLAC__StreamDecoderWriteStatus
+write_cb_file_raw (const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
+    const FLAC__int32 *const decoded_samples[], void *client_data)
+{
+	struct flac_client_data	*cdata;
+	FILE			*outfp;
+	unsigned int		channels, bsiz, bps, chan, samp;
+	char			*sample;
+
+	cdata = (struct flac_client_data *)client_data;
+	outfp = cdata->out.fp;
+	bsiz = frame->header.blocksize;
+	bps = frame->header.bits_per_sample/8;
+	channels = frame->header.channels;
+	if (frame->header.channel_assignment ==
+	    FLAC__CHANNEL_ASSIGNMENT_INDEPENDENT)
+		return (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
+	for (samp = 0; samp < bsiz; samp++)
+		for (chan = 0; chan < channels; chan++) {
+			sample = (char *)(&decoded_samples[samp][chan])
+			    + (sizeof(FLAC__int32) - bps);
+			if (fwrite(sample, bps, 1, outfp) < 1)
+				return
+				    (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
+		}
+	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
+}
+
+void
+err_cb (const FLAC__StreamDecoder *dec,
+    const FLAC__StreamDecoderErrorStatus status, void *client_data)
+{
+	struct flac_client_data	*cd;
+
+	cd = (struct flac_client_data *)client_data;
+	cd->error = 1;
+}
+
+int
+decode_flac(void)
+{
+	if (FLAC__stream_decoder_process_until_end_of_stream(dec))
+		return (0);
+	return (1);
+}
+
+int
+free_decoder_flac(void)
+{
+	int	rv = 0;
+	if (!(FLAC__stream_decoder_finish(dec)))
+		rv = 1;
+	FLAC__stream_decoder_delete(dec);
+	return (rv);
 }
 
 int

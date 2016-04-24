@@ -1,5 +1,12 @@
 #ifndef PNP_H
 #define PNP_H
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/uio.h>
+
+#include <imsg.h>
+#include <poll.h>
+
 /* parent_main return values */
 enum {OK, INIT_FAIL, ERROR, CHILD_ERROR, SIGNAL};
 /* output types */

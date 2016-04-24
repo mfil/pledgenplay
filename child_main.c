@@ -11,6 +11,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "child.h"
 #include "comm.h"
 #include "file.h"
 #include "flac.h"
@@ -24,6 +25,7 @@ static struct {
 	FILE	*f;
 	int	fmt;
 } infile;
+static struct output	outp;
 
 int
 child_main(int sv[2], int output_type, int out_fd)
@@ -39,6 +41,12 @@ child_main(int sv[2], int output_type, int out_fd)
 	close(0);
 	close(1);
 	close(sv[0]);
+	if (output_type == OUT_RAW || output_type == OUT_WAV_FILE) {
+		outp.out.fp = fdopen(out_fd, "wb");
+		if (outp.out.fp == NULL)
+			fatal("fdopen");
+		outp.format = output_type;
+	}
 	imsg_init(&ibuf, sv[1]);
 	pfd.fd = sv[1];
 	pfd.events = POLLIN|POLLOUT;
@@ -65,7 +73,9 @@ child_main(int sv[2], int output_type, int out_fd)
 				case (CMD_EXIT):
 					_exit(0);
 				case (CMD_PLAY):
-					close(out_fd);
+					init_decoder_flac(infile.f, &outp);
+					(void)decode_flac();
+					(void)free_decoder_flac();
 				}
 				imsg_free(&imsg);
 			}
