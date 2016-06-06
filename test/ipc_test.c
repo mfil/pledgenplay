@@ -150,14 +150,13 @@ START_TEST (parent_handles_term_signal)
 }
 END_TEST
 
-START_TEST (child_acks_new_file_if_valid)
+START_TEST (send_new_file_returns_1_on_valid_file)
 {
 	struct pollfd	pfd;
 	struct imsgbuf	ibuf;
-	struct imsg	msg;
 
 	pid_t		child_pid;
-	int		sv[2], rv, n_ready, fd;
+	int		sv[2], rv;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
@@ -173,41 +172,22 @@ START_TEST (child_acks_new_file_if_valid)
 	default:
 		/* Parent process */
 		close(sv[1]);
-		fd = open("testdata/test.flac", O_RDONLY);
 		pfd.fd = sv[0];
-		pfd.events = POLLOUT;
+		pfd.events = POLLIN|POLLOUT;
 		imsg_init(&ibuf, sv[0]);
-		imsg_compose(&ibuf, (u_int32_t)NEW_FILE, 0, getpid(), fd, NULL,
-		    0);
-		if ((n_ready = poll(&pfd, 1, 1)) == -1)
-			err(1, "poll");
-		if (n_ready == 0 || (pfd.revents & POLLOUT) == 0)
-			errx(1, "Can't write to socket.");
-		if (imsg_flush(&ibuf) == -1) {
-			errx(1, "imsg_flush failed.");
-		}
-		pfd.events = POLLIN;
-		if ((n_ready = poll(&pfd, 1, 1)) == -1)
-			err(1, "poll");
-		if (n_ready == 0 || (pfd.revents & (POLLIN|POLLHUP)) == 0)
-			errx(1, "Can't read from socket.");
-		if (imsg_read(&ibuf) == -1)
-			errx(1, "imsg_read failed.");
-		if (imsg_get(&ibuf, &msg) == -1)
-			errx(1, "imsg_get failed.");
-		ck_assert_int_eq((int)msg.hdr.type, MSG_ACK_FILE);
+		rv = send_new_file("testdata/test.flac", &pfd, &ibuf);
+		ck_assert_int_eq(rv, 1);
 	}
 }
 END_TEST
 
-START_TEST (child_sends_MSG_FILE_ERR_on_invalid_file)
+START_TEST (send_new_file_returns_0_on_invalid_file)
 {
 	struct pollfd	pfd;
 	struct imsgbuf	ibuf;
-	struct imsg	msg;
 
 	pid_t		child_pid;
-	int		sv[2], rv, n_ready, fd;
+	int		sv[2], rv;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
@@ -223,28 +203,11 @@ START_TEST (child_sends_MSG_FILE_ERR_on_invalid_file)
 	default:
 		/* Parent process */
 		close(sv[1]);
-		fd = open("testdata/random_garbage", O_RDONLY);
 		pfd.fd = sv[0];
-		pfd.events = POLLOUT;
+		pfd.events = POLLIN|POLLOUT;
 		imsg_init(&ibuf, sv[0]);
-		imsg_compose(&ibuf, (u_int32_t)NEW_FILE, fd, getpid(), -1, NULL,
-		    0);
-		if ((n_ready = poll(&pfd, 1, 1)) == -1)
-			err(1, "poll");
-		if (n_ready == 0 || (pfd.revents & POLLOUT) == 0)
-			errx(1, "Can't write to socket.");
-		if (imsg_flush(&ibuf) == -1)
-			errx(1, "imsg_flush failed.");
-		pfd.events = POLLIN;
-		if ((n_ready = poll(&pfd, 1, 1)) == -1)
-			err(1, "poll");
-		if (n_ready == 0 || (pfd.revents & (POLLIN|POLLHUP)) == 0)
-			errx(1, "Can't read from socket.");
-		if (imsg_read(&ibuf) == -1)
-			errx(1, "imsg_read failed.");
-		if (imsg_get(&ibuf, &msg) == -1)
-			errx(1, "imsg_get failed.");
-		ck_assert_int_eq((int)msg.hdr.type, MSG_FILE_ERR);
+		rv = send_new_file("testdata/random_garbage", &pfd, &ibuf);
+		ck_assert_int_eq(rv, 0);
 	}
 }
 END_TEST
@@ -261,8 +224,8 @@ Suite
 	tc_signals = tcase_create("Signal handling");
 
 	tcase_add_test(tc_cmd, child_exits_on_CMD_EXIT);
-	tcase_add_test(tc_cmd, child_acks_new_file_if_valid);
-	tcase_add_test(tc_cmd, child_sends_MSG_FILE_ERR_on_invalid_file);
+	tcase_add_test(tc_cmd, send_new_file_returns_1_on_valid_file);
+	tcase_add_test(tc_cmd, send_new_file_returns_0_on_invalid_file);
 	tcase_add_test(tc_signals, parent_handles_child_exit);
 	tcase_add_test(tc_signals, parent_ignores_false_SIGCHLD);
 	tcase_add_loop_test(tc_signals, parent_handles_term_signal, 0, 3);

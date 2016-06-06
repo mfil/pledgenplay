@@ -6,6 +6,7 @@
 
 #include <err.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <imsg.h>
 #include <poll.h>
 #include <signal.h>
@@ -20,6 +21,7 @@
 
 void			child_warn(char *, size_t);
 static void	 	signal_handler(int);
+int			ibuf_init(void);
 int 			check_child(pid_t, int *, int *);
 __dead void		error(char *);
 
@@ -154,9 +156,69 @@ fail:
 }
 
 int
-decode(char *infile, char *outfile, int format)
+send_new_file(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
 {
-	return (0);
+	struct imsg	msg;
+	int		in_fd, nready, rv = -1;
+	ssize_t		rv_get;
+
+	in_fd = open(infile, O_RDONLY);
+	if (imsg_compose(ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0) == -1)
+		return (-1);
+	while (rv == -1) {
+		nready = poll(pfd, 1, 1);
+		if (nready < 0)
+			return (-1);
+		if (nready == 0)
+			continue;
+		if ((pfd->revents & POLLOUT) && imsg_flush(ibuf) == -1)
+			return (-1);
+		if ((pfd->revents & (POLLIN|POLLHUP) && imsg_read(ibuf) == -1))
+			return (-1);
+		while ((rv_get = imsg_get(ibuf, &msg)) > 0) {
+			switch (msg.hdr.type) {
+			case (MSG_ACK_FILE):
+				rv = 1;
+				break;
+			case (MSG_FILE_ERR):
+				rv = 0;
+				break;
+			default:
+				break;
+			}
+			imsg_free(&msg);
+		}
+		if (rv_get == -1)
+			return (-1);
+	}
+	return (rv);
+}
+int
+decode(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
+{
+	struct imsg	msg;
+	int		in_fd, nready;
+	ssize_t		rv_get;
+
+	in_fd = open(infile, O_RDONLY);
+	if (imsg_compose(ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0) == -1)
+		return (-1);
+	while (1) {
+		nready = poll(pfd, 1, 0);
+		if (nready < 0)
+			return (-1);
+		if (nready == 0)
+			continue;
+		if ((pfd->revents & POLLOUT) || imsg_flush(ibuf) == -1)
+			return (-1);
+		if (pfd->revents & POLLIN || imsg_read(ibuf) == -1)
+			return (-1);
+		while ((rv_get = imsg_get(ibuf, &msg)) > 0) {
+			if (msg.hdr.type != MSG_ACK_FILE)
+				return (-1);
+		}
+	}
+	return (-1);
 }
 
 void
