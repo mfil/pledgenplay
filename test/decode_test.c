@@ -1,6 +1,7 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/queue.h>
+#include <sys/stat.h>
 #include <sys/uio.h>
 
 #include <assert.h>
@@ -210,25 +211,32 @@ END_TEST
 
 START_TEST (decode_converts_flac_to_raw)
 {
+	struct imsgbuf	ibuf;
+	struct pollfd	pfd;
 	pid_t		child_pid;
-	int		rv, cmp, sv[2];
+	int		rv, cmp, sv[2], out_fd;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	if (remove("./scratchspace/test.raw") == -1 && errno != ENOENT)
-		err(1, "remove");
+	out_fd = open("./scratchspace/test.raw", O_WRONLY|O_CREAT|O_TRUNC,
+	    S_IRUSR|S_IWUSR);
+	if (out_fd == -1)
+		err(1, "open");
 	child_pid = fork();
 	switch (child_pid) {
 	case -1:
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		child_main(sv, 0, -1);
+		child_main(sv, OUT_RAW, out_fd);
 	default:
 		/* Parent process */
 		close(sv[1]);
-		rv = decode("./testdata/test.flac", "./scratchspace/test.raw",
-		    OUT_RAW);
+		close(out_fd);
+		imsg_init(&ibuf, sv[0]);
+		pfd.fd = sv[0];
+		pfd.events = POLLIN|POLLOUT;
+		rv = decode("./testdata/test.flac", &pfd, &ibuf);
 		ck_assert_int_eq(rv, 0);
 		cmp = system("cmp ./testdata/test.raw ./scratchspace/test.raw 1>/dev/null");
 		ck_assert_int_eq(cmp, 0);

@@ -193,15 +193,17 @@ send_new_file(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
 	}
 	return (rv);
 }
+
 int
 decode(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
 {
 	struct imsg	msg;
-	int		in_fd, nready;
+	int		rv, nready;
 	ssize_t		rv_get;
 
-	in_fd = open(infile, O_RDONLY);
-	if (imsg_compose(ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0) == -1)
+	if ((rv = send_new_file(infile, pfd, ibuf)) < 1)
+		return (rv);
+	if (imsg_compose(ibuf, (u_int32_t)CMD_PLAY, 0, 0, -1, NULL, 0) == -1)
 		return (-1);
 	while (1) {
 		nready = poll(pfd, 1, 0);
@@ -209,13 +211,16 @@ decode(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
 			return (-1);
 		if (nready == 0)
 			continue;
-		if ((pfd->revents & POLLOUT) || imsg_flush(ibuf) == -1)
+		if ((pfd->revents & POLLOUT) && imsg_flush(ibuf) == -1)
 			return (-1);
-		if (pfd->revents & POLLIN || imsg_read(ibuf) == -1)
+		if (pfd->revents & POLLIN && imsg_read(ibuf) == -1)
 			return (-1);
 		while ((rv_get = imsg_get(ibuf, &msg)) > 0) {
-			if (msg.hdr.type != MSG_ACK_FILE)
-				return (-1);
+			switch (msg.hdr.type) {
+			case MSG_DONE:
+				imsg_free(&msg);
+				return (0);
+			}
 		}
 	}
 	return (-1);

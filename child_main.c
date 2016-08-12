@@ -2,6 +2,7 @@
 #include <sys/queue.h>
 #include <sys/uio.h>
 
+#include <assert.h>
 #include <err.h>
 #include <errno.h>
 #include <imsg.h>
@@ -19,6 +20,7 @@
 
 static void	new_file(int);
 static int	extract_meta(void);
+static void	play(void);
 
 static struct imsgbuf	ibuf;
 static struct {
@@ -42,7 +44,7 @@ child_main(int sv[2], int output_type, int out_fd)
 	close(1);
 	close(sv[0]);
 	if (output_type == OUT_RAW || output_type == OUT_WAV_FILE) {
-		outp.out.fp = fdopen(out_fd, "wb");
+		outp.out.fp = fdopen(out_fd, "w");
 		if (outp.out.fp == NULL)
 			fatal("fdopen");
 		outp.format = output_type;
@@ -70,19 +72,23 @@ child_main(int sv[2], int output_type, int out_fd)
 					else
 						extract_meta();
 					break;
+				case (CMD_PLAY):
+					if (infile.f == NULL)
+						file_errx("No input file.");
+					else {
+						play();
+						msg(MSG_DONE, NULL, 0);
+					}
+					break;
 				case (CMD_EXIT):
 					_exit(0);
-				case (CMD_PLAY):
-					init_decoder_flac(infile.f, &outp);
-					(void)decode_flac();
-					(void)free_decoder_flac();
 				}
 				imsg_free(&imsg);
 			}
 		if (pfd.revents & POLLOUT)
 			if (imsg_flush(&ibuf) == -1)
 				_err("imsg_flush");
-		}
+			}
 	}
 }
 
@@ -97,7 +103,7 @@ new_file(int fd)
 		infile.fmt = UNKNOWN;
 	}
 	/* Open the new one. */
-	if ((infile.f = fdopen(fd, "rb")) == NULL) {
+	if ((infile.f = fdopen(fd, "r")) == NULL) {
 		file_err("fdopen");
 		return;
 	}
@@ -124,6 +130,22 @@ extract_meta(void)
 		return (-1);
 	msg(META_END, NULL, 0);
 	return (rv);
+}
+
+static void
+play(void)
+{
+	if (infile.fmt != FLAC || outp.format != OUT_RAW)
+		fatalx("only flac to raw for now");
+	if (init_decoder_flac(infile.f, &outp))
+		fatalx("failed to initialize flac decoder");
+	if (decode_flac())
+		msgwarnx("error decoding file");
+	if (cleanup_flac_decoder())
+		msgwarnx("error deallocating decoder");
+	fclose(infile.f);
+	fclose(outp.out.fp);
+	return;
 }
 
 /*
@@ -234,6 +256,23 @@ fatal(char *msg)
 	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
 		_err("imsg");
 	imsg_close(&ibuf, buf);
+	if (imsg_flush(&ibuf) == -1)
+		_err("imsg");
+	_exit(1);
+}
+
+__dead void
+fatalx(char *msg)
+{
+	char		*errmsg;
+	u_int16_t	msg_len, err_len;
+
+	errmsg = strerror(errno);
+	msg_len = (u_int16_t)strlen(msg);
+	err_len = (u_int16_t)strlen(errmsg);
+	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, msg,
+	    (u_int16_t)strlen(msg)+1) == -1)
+		_err("imsg");
 	if (imsg_flush(&ibuf) == -1)
 		_err("imsg");
 	_exit(1);
