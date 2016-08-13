@@ -30,16 +30,16 @@ static FLAC__StreamDecoder	*dec;
 struct flac_client_data		cdata;
 
 int
-init_decoder_flac(FILE *in, struct output *outp)
+init_decoder_flac(int fd, struct output *outp)
 {
 	FLAC__StreamDecoderWriteCallback	write_cb;
 
-	cdata.in = in;
+	cdata.in_fd = fd;
 	cdata.out = outp->out;
 	cdata.error = 0;
 	if ((dec = FLAC__stream_decoder_new()) == NULL)
 		return (-1);
-	switch (outp->format) {
+	switch (outp->type) {
 	case (OUT_RAW):
 		write_cb = write_cb_file_raw;
 		break;
@@ -58,15 +58,15 @@ read_cb_FILE(const FLAC__StreamDecoder *dec, FLAC__byte *buf, size_t *len,
     void *client_data)
 {
 	struct flac_client_data	*cdata = client_data;
-	FILE			*in = cdata->in;
-	size_t			nread;
+	int			fd = cdata->in_fd;
+	ssize_t			nread;
 
-	nread = fread(buf, 1, *len, in);
+	nread = read(fd, buf, *len);
 	if (nread < *len) {
-		if (ferror(in))
+		if (nread < 0)
 			return (FLAC__STREAM_DECODER_READ_STATUS_ABORT);
-		*len = nread;
-		if (feof(in))
+		*len = (size_t)nread;
+		if (nread == 0)
 			return (FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM);
 	}
 	return (FLAC__STREAM_DECODER_READ_STATUS_CONTINUE);
@@ -158,9 +158,9 @@ cleanup_flac_decoder(void)
 }
 
 int
-extract_meta_flac(FILE *f)
+extract_meta_flac(int fd)
 {
-	long		prev_pos;
+	off_t		prev_pos;
 	unsigned char	mdata_hdr[4], str_info[34], id3_hdr[10], *mdata = NULL;
 	size_t		len;
 	u_int64_t	rate, samples, t; /* t = time in s (samples/rate) */
@@ -168,17 +168,17 @@ extract_meta_flac(FILE *f)
 	int		rv, id3v2_found;
 
 	/* Memorize position in file. */
-	if ((prev_pos = ftell(f)) == -1) {
-		file_err("ftell");
+	if ((prev_pos = lseek(fd, 0, SEEK_CUR)) == -1) {
+		file_err("lseek");
 		return (-1);
 	}
-	if (fseek(f, 0, SEEK_SET) != 0) {
+	if (lseek(fd, 0, SEEK_SET) < 0) {
 		file_err("fseek");
 		return (-1);
 	}
 	/* Check if the file starts with an ID3v2 tag. */
-	if (fread(id3_hdr, sizeof(id3_hdr), 1, f) < 1) {
-		file_err("fread");
+	if (read(fd, id3_hdr, sizeof(id3_hdr)) < sizeof(id3_hdr)) {
+		file_err("read");
 		return (-1);
 	}
 	if (memcmp(id3_hdr, "ID3", 3) == 0) {
@@ -186,8 +186,8 @@ extract_meta_flac(FILE *f)
 		    (id3_hdr[8] << 7) + id3_hdr[9];
 		if ((mdata = malloc(len)) == NULL)
 			fatal("malloc");
-		if (fread(mdata, len, 1, f) < 1) {
-			file_err("fread");
+		if (read(fd, mdata, len) < len) {
+			file_err("read");
 			return (-1);
 		}
 		if ((rv = parse_id3v2(id3_hdr[5], mdata, len)) == -1) {
@@ -196,20 +196,20 @@ extract_meta_flac(FILE *f)
 		}
 		id3v2_found = 1;
 	}
-	else if (fseek(f, 0, SEEK_SET) != 0) {
-		file_err("fseek");
+	else if (lseek(fd, 0, SEEK_SET) < 0) {
+		file_err("lseek");
 		return (-1);
 	}
 	/*
 	 * Read the STREAMINFO block. We do this even if an ID3v2 tag was found
 	 * in order to calculate the time.
 	 */
-	if (fseek(f, 4, SEEK_CUR) != 0) {
-		file_err("fseek");
+	if (lseek(fd, 4, SEEK_CUR) < 0) {
+		file_err("lseek");
 		return (-1);
 	}
-	if (fread(mdata_hdr, sizeof(mdata_hdr), 1, f) < 1) {
-		file_err("fread");
+	if (read(fd, mdata_hdr, sizeof(mdata_hdr)) < sizeof(mdata_hdr)) {
+		file_err("read");
 		return (-1);
 	}
 	if ((mdata_hdr[0] & 0x7f) != 0 || blocksize(mdata_hdr) !=
@@ -222,8 +222,8 @@ extract_meta_flac(FILE *f)
 		return (-1);
 	}
 	/* Read the STREAMINFO block and calculate the running time. */
-	if (fread(str_info, sizeof(str_info), 1, f) < 1) {
-		file_err("fread");
+	if (read(fd, str_info, sizeof(str_info)) < sizeof(str_info)) {
+		file_err("read");
 		return (-1);
 	}
 	rate = get_rate(str_info);
@@ -248,8 +248,9 @@ extract_meta_flac(FILE *f)
 
 	/* Look for the VORBIS_COMMENT block. */
 	while (1) {
-		if (fread(mdata_hdr, sizeof(mdata_hdr), 1, f) < 1) {
-			file_err("fread");
+		if (read(fd, mdata_hdr, sizeof(mdata_hdr))
+		    < sizeof(mdata_hdr)) {
+			file_err("read");
 			return (-1);
 		}
 		if ((mdata_hdr[0] & 0x7f) == 4) {
@@ -257,13 +258,13 @@ extract_meta_flac(FILE *f)
 			len = blocksize(mdata_hdr);
 			if ((mdata = malloc(len)) == NULL)
 				fatal("malloc");
-			if (fread(mdata, len, 1, f) < 1) {
-				file_err("fread");
+			if (read(fd, mdata, len) < len) {
+				file_err("read");
 				return (-1);
 			}
 			/* Return to the previous position in the file. */
-			if (fseek(f, prev_pos, SEEK_SET) != 0) {
-				file_err("fseek");
+			if (lseek(fd, prev_pos, SEEK_SET) < 0) {
+				file_err("lseek");
 				return (-1);
 			}
 			rv = parse_vorbis_comment(mdata, len);
@@ -275,14 +276,14 @@ extract_meta_flac(FILE *f)
 			 * bit set to 1, so this is the last block, and we
 			 * have not found a VORBIS_COMMENT block.
 			 */
-			if (fseek(f, prev_pos, SEEK_SET) == -1) {
+			if (lseek(fd, prev_pos, SEEK_SET) < 0) {
 				file_err("fseek");
 				return (-1);
 			}
 			return (0);
 		}
-		else if (fseek(f, blocksize(mdata_hdr), SEEK_CUR) != 0) {
-			file_err("fseek");
+		else if (lseek(fd, blocksize(mdata_hdr), SEEK_CUR) < 0) {
+			file_err("lseek");
 			return (-1);
 		}
 	}

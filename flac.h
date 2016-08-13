@@ -5,7 +5,7 @@
 #include "child.h"
 
 struct flac_client_data {
-	FILE				*in;
+	int				in_fd;
 	union out			out;
 	u_int64_t			samples;
 	unsigned int			rate, channels;
@@ -13,8 +13,8 @@ struct flac_client_data {
 	FLAC__StreamDecoderErrorStatus	error_status;
 };
 
-int	extract_meta_flac(FILE *);
-int	init_decoder_flac(FILE *, struct output *);
+int	extract_meta_flac(int);
+int	init_decoder_flac(int, struct output *);
 int	decode_flac(void);
-int	free_decoder_flac(void);
+int	cleanup_flac_decoder(void);
 #endif

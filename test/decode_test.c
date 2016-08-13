@@ -22,41 +22,41 @@
 
 START_TEST (filetype_recognizes_flac)
 {
-	FILE	*f;
-	f = fopen("./testdata/test.flac", "rb");
-	assert(f != NULL);
-	ck_assert_int_eq(filetype(f), FLAC);
-	fclose(f);
+	int	fd;
+	fd = open("./testdata/test.flac", O_RDONLY);
+	assert(fd != -1);
+	ck_assert_int_eq(filetype(fd), FLAC);
+	close(fd);
 }
 END_TEST
 
 START_TEST (filetype_recognizes_mp3)
 {
-	FILE	*f;
-	f = fopen("./testdata/test.mp3", "rb");
-	assert(f != NULL);
-	ck_assert_int_eq(filetype(f), MP3);
-	fclose(f);
+	int	fd;
+	fd = open("./testdata/test.mp3", O_RDONLY);
+	assert(fd != -1);
+	ck_assert_int_eq(filetype(fd), MP3);
+	close(fd);
 }
 END_TEST
 
 START_TEST (filetype_recognizes_wav)
 {
-	FILE	*f;
-	f = fopen("./testdata/test.wav", "rb");
-	assert(f != NULL);
-	ck_assert_int_eq(filetype(f), WAVE_PCM);
-	fclose(f);
+	int	fd;
+	fd = open("./testdata/test.wav", O_RDONLY);
+	assert(fd != -1);
+	ck_assert_int_eq(filetype(fd), WAVE_PCM);
+	close(fd);
 }
 END_TEST
 
 START_TEST (filetype_recognizes_unknown)
 {
-	FILE	*f;
-	f = fopen("./testdata/random_garbage", "rb");
-	assert(f != NULL);
-	ck_assert_int_eq(filetype(f), UNKNOWN);
-	fclose(f);
+	int	fd;
+	fd = open("./testdata/random_garbage", O_RDONLY);
+	assert(fd != -1);
+	ck_assert_int_eq(filetype(fd), UNKNOWN);
+	close(fd);
 }
 END_TEST
 
@@ -64,11 +64,11 @@ char	*files[] = {"./testdata/with_id3v2.wav", "./testdata/with_id3v2.flac","./te
 int	types[] = {WAVE_PCM, FLAC, MP3};
 START_TEST (filetype_skips_id3v2)
 {
-	FILE	*f;
-	f = fopen(files[_i], "rb");
-	assert(f != NULL);
-	ck_assert_int_eq(filetype(f), types[_i]);
-	fclose(f);
+	int	fd;
+	fd = open(files[_i], O_RDONLY);
+	assert(fd != -1);
+	ck_assert_int_eq(filetype(fd), types[_i]);
+	close(fd);
 }
 END_TEST
 

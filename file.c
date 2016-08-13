@@ -15,14 +15,15 @@ static size_t	be_to_uint(unsigned char *);
 static size_t	le_to_uint(unsigned char *);
 
 int
-filetype(FILE *f)
+filetype(int fd)
 {
-	size_t			nread;
-	unsigned char		buf[22];
-	const char		wave_pcm_tag[2] = {0x01, 0x00};
-	unsigned int		tag_size;
+	ssize_t		nread;
+	unsigned char	buf[22];
+	const char	wave_pcm_tag[2] = {0x01, 0x00};
+	off_t		tag_size;
 
-	if ((nread = fread(buf, 1, 22, f)) < 22 && ferror(f) != 0)
+	nread = read(fd, buf, sizeof(buf));
+	if (nread < 0)
 		return (-1);
 	/* skip ID3v2 tag, if present. */
 	if (nread >= 3 && memcmp(buf, "ID3", 3) == 0) {
@@ -30,12 +31,13 @@ filetype(FILE *f)
 			return (UNKNOWN);
 		tag_size = (buf[6] << 21) + (buf[7] << 14) + (buf[8] << 7)
 		    + buf[9];
-		if (fseek(f, tag_size+10, SEEK_SET) != 0)
+		if (lseek(fd, tag_size+10, SEEK_SET) < 0)
 			return (-1);
-		if ((nread = fread(buf, 1, 22, f)) < 22 && ferror(f) != 0)
+		nread = read(fd, buf, sizeof(buf));
+		if (nread < 0)
 			return (-1);
 	}
-	if (fseek(f, 0, SEEK_SET) != 0)
+	if (lseek(fd, 0, SEEK_SET) != 0)
 		return (-1);
 	if (nread >= 2 && buf[0] == 0xff && (buf[1] & 0xe0) == 0xe0)
 		/* mp3 framesync: 12 bits set to 1. */

@@ -10,7 +10,7 @@
 /* parent_main return values */
 enum {OK, INIT_FAIL, ERROR, CHILD_ERROR, SIGNAL};
 /* output types */
-enum {OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
+enum {NONE, OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
 
 int	child_main(int[2], int, int);
 int	parent_main(int[2], pid_t, int *, int *);
