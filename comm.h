@@ -1,5 +1,6 @@
 #ifndef PNP_COMM_H
 #define PNP_COMM_H
+#include "child.h"
 
 enum	{NEW_FILE,	/* Send file descriptor to child */
 	 CMD_EXIT,	/* Tell child to exit */
@@ -22,8 +23,8 @@ void		msg(int, void *, size_t);
 void		msgstr(int, char *);
 void		msgwarn(char *);
 void		msgwarnx(char *);
-void		file_err(char *);
-void		file_errx(char *);
+void		file_err(struct input *, char *);
+void		file_errx(struct input *, char *);
 __dead void	fatal(char *);
 __dead void	fatalx(char *);
 __dead void	_err(char *);

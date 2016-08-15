@@ -9,66 +9,90 @@
 #include <FLAC/stream_decoder.h>
 
 #include "comm.h"
+#include "child.h"
 #include "file.h"
 #include "flac.h"
 #include "pnp.h"
 
+static FLAC__StreamDecoder	*init_flac_decoder(struct flac_client_data *);
+static void			cleanup_flac_decoder(FLAC__StreamDecoder *);
 static size_t			blocksize(unsigned char *);
 static u_int64_t		get_samples(unsigned char *);
 static u_int64_t		get_rate(unsigned char *);
+static void			flac_error_msg(FLAC__StreamDecoderErrorStatus);
 
 void mdata_cb(const FLAC__StreamDecoder *, const FLAC__StreamMetadata *,
     void *);
-FLAC__StreamDecoderReadStatus read_cb_FILE(const FLAC__StreamDecoder *,
+FLAC__StreamDecoderReadStatus read_cb(const FLAC__StreamDecoder *,
     FLAC__byte *, size_t *, void *);
 FLAC__StreamDecoderWriteStatus write_cb_file_raw (const FLAC__StreamDecoder *,
     const FLAC__Frame *, const FLAC__int32 *const [], void *);
 void err_cb (const FLAC__StreamDecoder *, const FLAC__StreamDecoderErrorStatus,
     void *);
 
-static FLAC__StreamDecoder	*dec;
-struct flac_client_data		cdata;
-
-int
-init_decoder_flac(int fd, struct output *outp)
+static FLAC__StreamDecoder *
+init_flac_decoder(struct flac_client_data *cdata)
 {
 	FLAC__StreamDecoderWriteCallback	write_cb;
+	FLAC__StreamDecoder			*dec;
 
-	cdata.in_fd = fd;
-	cdata.out = outp->out;
-	cdata.error = 0;
-	if ((dec = FLAC__stream_decoder_new()) == NULL)
-		return (-1);
-	switch (outp->type) {
+	switch (cdata->out->type) {
 	case (OUT_RAW):
 		write_cb = write_cb_file_raw;
 		break;
 	default:
-		return (-1);
+		msgwarnx("invalid output type\n");
+		return (NULL);
 	}
-	if (FLAC__stream_decoder_init_stream(dec, read_cb_FILE, NULL, NULL,
-	    NULL, NULL, write_cb, mdata_cb, err_cb, &cdata)
-	    != FLAC__STREAM_DECODER_INIT_STATUS_OK)
-		return (-1);
-	return (0);
+	if ((dec = FLAC__stream_decoder_new()) == NULL)
+		fatal("malloc");
+	if (FLAC__stream_decoder_init_stream(dec, read_cb, NULL, NULL, NULL,
+	    NULL, write_cb, mdata_cb, err_cb, cdata)
+	    != FLAC__STREAM_DECODER_INIT_STATUS_OK) {
+		msgwarnx("flac decoder: initialization failed");
+		return (NULL);
+	}
+	return (dec);
 }
 
 FLAC__StreamDecoderReadStatus
-read_cb_FILE(const FLAC__StreamDecoder *dec, FLAC__byte *buf, size_t *len,
+read_cb(const FLAC__StreamDecoder *dec, FLAC__byte *buf, size_t *len,
     void *client_data)
 {
 	struct flac_client_data	*cdata = client_data;
-	int			fd = cdata->in_fd;
-	ssize_t			nread;
+	struct input		*in = cdata->in;
+	struct state		*state = cdata->state;
+	size_t			bytes_left, size, r_pos, w_pos, to_read, to_end;
 
-	nread = read(fd, buf, *len);
-	if (nread < *len) {
-		if (nread < 0)
-			return (FLAC__STREAM_DECODER_READ_STATUS_ABORT);
-		*len = (size_t)nread;
-		if (nread == 0)
-			return (FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM);
+	state->callback = 1;
+	process_events(in, state);
+	state->callback = 0;
+
+	if (in->error)
+		return (FLAC__STREAM_DECODER_READ_STATUS_ABORT);
+	size = in->buf_size;
+	bytes_left = size - in->buf_free;
+	if (bytes_left < *len)
+		*len = bytes_left;
+	if (bytes_left == 0 && in->eof)
+		return (FLAC__STREAM_DECODER_READ_STATUS_END_OF_STREAM);
+	r_pos = in->read_pos;
+	w_pos = in->write_pos;
+	to_read = *len;
+	if (to_read == 0) {
+		msgwarnx("input buffer is empty\n");
+		return (FLAC__STREAM_DECODER_READ_STATUS_CONTINUE);
 	}
+	if (r_pos + to_read <= size) {
+		memcpy(buf, in->buf + r_pos, to_read);
+	}
+	else {
+		to_end = size - r_pos;
+		memcpy(buf, in->buf + r_pos, to_end);
+		memcpy(buf + to_end, in->buf, to_read - to_end);
+	}
+	in->read_pos = (r_pos + to_read) % size;
+	in->buf_free += to_read;
 	return (FLAC__STREAM_DECODER_READ_STATUS_CONTINUE);
 }
 
@@ -96,7 +120,7 @@ write_cb_file_raw(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	char			*sample;
 
 	cdata = (struct flac_client_data *)client_data;
-	outfp = cdata->out.fp;
+	outfp = cdata->out->out.fp;
 	bsiz = frame->header.blocksize;
 	bps = frame->header.bits_per_sample/8;
 	channels = frame->header.channels;
@@ -123,62 +147,78 @@ err_cb(const FLAC__StreamDecoder *dec,
 }
 
 int
-decode_flac(void)
+play_flac(struct input *in, struct output *out, struct state *state)
 {
-	int	rv = 0;
+	struct flac_client_data		cdata;
+	FLAC__StreamDecoder		*dec;
 
-	if (FLAC__stream_decoder_process_until_end_of_stream(dec) == false)
-		rv = -1;
-	if (cdata.error) {
-		switch (cdata.error_status) {
-		rv = -1;
-		case (FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC):
-			msgwarnx("flac decoder: lost sync");
-		case (FLAC__STREAM_DECODER_ERROR_STATUS_BAD_HEADER):
-			msgwarnx("flac decoder: bad header");
-		case (FLAC__STREAM_DECODER_ERROR_STATUS_FRAME_CRC_MISMATCH):
-			msgwarnx("flac decoder: CRC mismatch");
-		case (FLAC__STREAM_DECODER_ERROR_STATUS_UNPARSEABLE_STREAM):
-			msgwarnx("flac decoder: unparseable stream");
+	state->play = PLAYING;
+	state->callback = 0;
+	cdata.in = in;
+	cdata.state = state;
+	cdata.out = out;
+	if ((dec = init_flac_decoder(&cdata)) == NULL)
+		return (-1);
+
+	while (1) {
+		process_events(in, state);
+		switch (state->play) {
+		case (PLAYING):
+			if (FLAC__stream_decoder_process_single(dec) == false) {
+				if (cdata.error)
+					flac_error_msg(cdata.error_status);
+				cleanup_flac_decoder(dec);
+				return (-1);
+			}
+			if (FLAC__stream_decoder_get_state(dec)
+			    == FLAC__STREAM_DECODER_END_OF_STREAM) {
+				fclose(out->out.fp);
+				msg(MSG_DONE, NULL, 0);
+				return(0);
+			}
+			break;
+		case (STOPPED):
+			cleanup_flac_decoder(dec);
+			return (0);
+		case (PAUSED):
+			break;
 		default:
-			msgwarnx("flac decoder: unknown error");
+			fatal("unknown state");
 		}
 	}
-	return (rv);
 }
 
-int
-cleanup_flac_decoder(void)
+static void
+cleanup_flac_decoder(FLAC__StreamDecoder *dec)
 {
-	int	rv = 0;
 	if (!(FLAC__stream_decoder_finish(dec)))
-		rv = 1;
+		msgwarnx("flac decoder: bad MD5 checksum\n");
 	FLAC__stream_decoder_delete(dec);
-	return (rv);
 }
 
 int
-extract_meta_flac(int fd)
+extract_meta_flac(struct input *in)
 {
 	off_t		prev_pos;
 	unsigned char	mdata_hdr[4], str_info[34], id3_hdr[10], *mdata = NULL;
 	size_t		len;
 	u_int64_t	rate, samples, t; /* t = time in s (samples/rate) */
 	char		*t_str;
-	int		rv, id3v2_found;
+	int		fd, rv, id3v2_found = 0;
 
+	fd = in->fd;
 	/* Memorize position in file. */
 	if ((prev_pos = lseek(fd, 0, SEEK_CUR)) == -1) {
-		file_err("lseek");
+		file_err(in, "lseek");
 		return (-1);
 	}
 	if (lseek(fd, 0, SEEK_SET) < 0) {
-		file_err("fseek");
+		file_err(in, "fseek");
 		return (-1);
 	}
 	/* Check if the file starts with an ID3v2 tag. */
 	if (read(fd, id3_hdr, sizeof(id3_hdr)) < sizeof(id3_hdr)) {
-		file_err("read");
+		file_err(in, "read");
 		return (-1);
 	}
 	if (memcmp(id3_hdr, "ID3", 3) == 0) {
@@ -187,17 +227,17 @@ extract_meta_flac(int fd)
 		if ((mdata = malloc(len)) == NULL)
 			fatal("malloc");
 		if (read(fd, mdata, len) < len) {
-			file_err("read");
+			file_err(in, "read");
 			return (-1);
 		}
 		if ((rv = parse_id3v2(id3_hdr[5], mdata, len)) == -1) {
-			file_errx("malformed ID3v2 tag.");
+			file_errx(in, "malformed ID3v2 tag.");
 			return (-1);
 		}
 		id3v2_found = 1;
 	}
 	else if (lseek(fd, 0, SEEK_SET) < 0) {
-		file_err("lseek");
+		file_err(in, "lseek");
 		return (-1);
 	}
 	/*
@@ -205,11 +245,11 @@ extract_meta_flac(int fd)
 	 * in order to calculate the time.
 	 */
 	if (lseek(fd, 4, SEEK_CUR) < 0) {
-		file_err("lseek");
+		file_err(in, "lseek");
 		return (-1);
 	}
 	if (read(fd, mdata_hdr, sizeof(mdata_hdr)) < sizeof(mdata_hdr)) {
-		file_err("read");
+		file_err(in, "read");
 		return (-1);
 	}
 	if ((mdata_hdr[0] & 0x7f) != 0 || blocksize(mdata_hdr) !=
@@ -218,12 +258,12 @@ extract_meta_flac(int fd)
 		 * The file does not start with a valid STREAMINFO block,
 		 * invalid flac file.
 		 */
-		file_errx("missing STREAMINFO block.");
+		file_errx(in, "missing STREAMINFO block.");
 		return (-1);
 	}
 	/* Read the STREAMINFO block and calculate the running time. */
 	if (read(fd, str_info, sizeof(str_info)) < sizeof(str_info)) {
-		file_err("read");
+		file_err(in, "read");
 		return (-1);
 	}
 	rate = get_rate(str_info);
@@ -250,7 +290,7 @@ extract_meta_flac(int fd)
 	while (1) {
 		if (read(fd, mdata_hdr, sizeof(mdata_hdr))
 		    < sizeof(mdata_hdr)) {
-			file_err("read");
+			file_err(in, "read");
 			return (-1);
 		}
 		if ((mdata_hdr[0] & 0x7f) == 4) {
@@ -259,12 +299,12 @@ extract_meta_flac(int fd)
 			if ((mdata = malloc(len)) == NULL)
 				fatal("malloc");
 			if (read(fd, mdata, len) < len) {
-				file_err("read");
+				file_err(in, "read");
 				return (-1);
 			}
 			/* Return to the previous position in the file. */
 			if (lseek(fd, prev_pos, SEEK_SET) < 0) {
-				file_err("lseek");
+				file_err(in, "lseek");
 				return (-1);
 			}
 			rv = parse_vorbis_comment(mdata, len);
@@ -277,13 +317,13 @@ extract_meta_flac(int fd)
 			 * have not found a VORBIS_COMMENT block.
 			 */
 			if (lseek(fd, prev_pos, SEEK_SET) < 0) {
-				file_err("fseek");
+				file_err(in, "fseek");
 				return (-1);
 			}
 			return (0);
 		}
 		else if (lseek(fd, blocksize(mdata_hdr), SEEK_CUR) < 0) {
-			file_err("lseek");
+			file_err(in, "lseek");
 			return (-1);
 		}
 	}
@@ -316,4 +356,25 @@ get_samples(unsigned char *strinf)
 	rv = ((u_int64_t)(strinf[13] & 0x0f) << 32) + (strinf[14] << 24) +
 	    (strinf[15] << 16) + (strinf[16] << 8) + strinf[17];
 	return (rv);
+}
+
+static void
+flac_error_msg(FLAC__StreamDecoderErrorStatus error_status)
+{
+	switch (error_status) {
+	case (FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC):
+		msgwarnx("flac decoder: lost sync");
+		break;
+	case (FLAC__STREAM_DECODER_ERROR_STATUS_BAD_HEADER):
+		msgwarnx("flac decoder: bad header");
+		break;
+	case (FLAC__STREAM_DECODER_ERROR_STATUS_FRAME_CRC_MISMATCH):
+		msgwarnx("flac decoder: CRC mismatch");
+		break;
+	case (FLAC__STREAM_DECODER_ERROR_STATUS_UNPARSEABLE_STREAM):
+		msgwarnx("flac decoder: unparseable stream");
+		break;
+	default:
+		msgwarnx("flac decoder: unknown error");
+	}
 }

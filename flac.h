@@ -5,16 +5,15 @@
 #include "child.h"
 
 struct flac_client_data {
-	int				in_fd;
-	union out			out;
+	struct input			*in;
+	struct state			*state;
+	struct output			*out;
 	u_int64_t			samples;
 	unsigned int			rate, channels;
 	int				error;
 	FLAC__StreamDecoderErrorStatus	error_status;
 };
 
-int	extract_meta_flac(int);
-int	init_decoder_flac(int, struct output *);
-int	decode_flac(void);
-int	cleanup_flac_decoder(void);
+int	play_flac(struct input *, struct output *, struct state *);
+int	extract_meta_flac(struct input *);
 #endif
