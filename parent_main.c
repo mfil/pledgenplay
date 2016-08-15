@@ -162,7 +162,7 @@ send_new_file(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
 	int		in_fd, nready, rv = -1;
 	ssize_t		rv_get;
 
-	in_fd = open(infile, O_RDONLY);
+	in_fd = open(infile, O_RDONLY|O_NONBLOCK);
 	if (imsg_compose(ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0) == -1)
 		return (-1);
 	while (rv == -1) {
