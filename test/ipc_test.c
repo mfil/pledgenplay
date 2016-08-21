@@ -16,64 +16,44 @@
 #include <unistd.h>
 
 #include "comm.h"
+#include "parent.h"
 #include "pnp.h"
 
 START_TEST (child_exits_on_CMD_EXIT)
 {
-	struct pollfd	pfd;
-	struct imsgbuf	ibuf;
-
-	pid_t		child_pid;
-	int		sv[2], rv, n_ready, status;
+	pid_t		child;
+	int		sv[2];
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	child_pid = fork();
-	switch (child_pid) {
+	child = fork();
+	switch (child) {
 	case -1:
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		rv = child_main(sv, 0, -1);
-		if (rv == -1)
+		if (child_main(sv, 0, -1) == -1)
 			ck_abort_msg("child_main failed.");
 	default:
 		/* Parent process */
-		close(sv[1]);
-		pfd.fd = sv[0];
-		pfd.events = POLLOUT;
-		imsg_init(&ibuf, sv[0]);
-		imsg_compose(&ibuf, (u_int32_t)CMD_EXIT, 0, getpid(), -1, NULL,
-		    0);
-		if ((n_ready = poll(&pfd, 1, 1)) == -1)
-			err(1, "poll");
-		if (n_ready == 0 || (pfd.revents & POLLOUT) == 0)
-			errx(1, "Can't write to socket.");
-		if (imsg_flush(&ibuf) == -1) {
-			errx(1, "imsg_flush failed.");
-		}
+		parent_init(sv, child);
+		stop_child();
 		sleep(1);
-		while ((rv = waitpid(child_pid, &status, WNOHANG)) == -1) {
-			if (errno != EINTR)
-				err(1, "waitpid");
-		}
-		if (rv == 0) {
-			ck_abort_msg("Child process did not exit.");
-		}
-		ck_assert_int_eq(status, 0);
+		ck_assert_int_eq(check_child(), 0);
 	}
 }
 END_TEST
 
 START_TEST (parent_handles_child_exit)
 {
-	pid_t	child_pid;
-	int	sv[2], rv, errval, child_status;
+	pid_t		child;
+	int		sv[2];
+	struct imsg	msg;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	child_pid = fork();
-	switch (child_pid) {
+	child = fork();
+	switch (child) {
 	case -1:
 		err(1, "fork");
 	case 0:
@@ -81,87 +61,51 @@ START_TEST (parent_handles_child_exit)
 		_exit(1);
 	default:
 		/* Parent process */
-		rv = parent_main(sv, child_pid, &errval, &child_status);
-		ck_assert_int_eq(rv, SIGNAL);
-		ck_assert_int_eq(errval, SIGCHLD);
-		ck_assert(WIFEXITED(child_status));
-		ck_assert_int_eq(WEXITSTATUS(child_status), 1);
+		parent_init(sv, child);
+		while (1) {
+			if (parent_process_events(&msg) > 0)
+				imsg_free(&msg);
+		}
 	}
 }
 END_TEST
 
-int 	check_child(pid_t, int *, int *);
 START_TEST (parent_ignores_false_SIGCHLD)
 {
-	pid_t	child_pid;
-	int	sv[2], errval, child_status;
+	pid_t		child;
+	int		sv[2];
+	struct imsg	msg;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	child_pid = fork();
-	switch (child_pid) {
+	child= fork();
+	switch (child) {
 	case -1:
 		err(1, "fork");
 	case 0:
 		/* Child process */
 		kill(getppid(), SIGCHLD);
-	default:
-		/* Parent process */
-		ck_assert_int_eq(check_child(child_pid, &errval, &child_status), 0);
-	}
-}
-END_TEST
-
-/*
- * When the parent process receives a signal that causes it to terminate,
- * parent_main() should send SIGTERM to the child process, wait for it, and
- * then return SIGNAL.
- */
-int	term_signals[] = {SIGHUP, SIGINT, SIGTERM};
-
-START_TEST (parent_handles_term_signal)
-{
-	pid_t	child_pid, wait_rv;
-	int	sv[2], rv, errval, child_status;
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
-		err(1, "socketpair");
-	child_pid = fork();
-	switch (child_pid) {
-	case -1:
-		err(1, "fork");
-	case 0:
-		/* Child process */
-		kill(getppid(), term_signals[_i]);
-		/* Loop until terminated. */
 		while (1)
 			;
 	default:
 		/* Parent process */
-		rv = parent_main(sv, child_pid, &errval, &child_status);
-		ck_assert_int_eq(rv, SIGNAL);
-		ck_assert_int_eq(errval, term_signals[_i]);
-		ck_assert(WIFSIGNALED(child_status));
-		ck_assert_int_eq(WTERMSIG(child_status), SIGTERM);
-		wait_rv = waitpid(child_pid, &child_status, WNOHANG);
-		ck_assert(wait_rv == -1);
-		ck_assert_int_eq(errno, ECHILD);
+		parent_init(sv, child);
+		parent_process_events(&msg);
+		ck_assert_int_eq(check_child(), 1);
 	}
 }
 END_TEST
 
-START_TEST (send_new_file_returns_1_on_valid_file)
+START_TEST (send_new_file_returns_0_on_valid_file)
 {
-	struct pollfd	pfd;
-	struct imsgbuf	ibuf;
-
-	pid_t		child_pid;
+	pid_t		child;
 	int		sv[2], rv;
+	struct imsg	msg;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	child_pid = fork();
-	switch (child_pid) {
+	child = fork();
+	switch (child) {
 	case -1:
 		err(1, "fork");
 	case 0:
@@ -171,43 +115,37 @@ START_TEST (send_new_file_returns_1_on_valid_file)
 			ck_abort_msg("child_main failed.");
 	default:
 		/* Parent process */
-		close(sv[1]);
-		pfd.fd = sv[0];
-		pfd.events = POLLIN|POLLOUT;
-		imsg_init(&ibuf, sv[0]);
-		rv = send_new_file("testdata/test.flac", &pfd, &ibuf);
-		ck_assert_int_eq(rv, 1);
-	}
-}
-END_TEST
-
-START_TEST (send_new_file_returns_0_on_invalid_file)
-{
-	struct pollfd	pfd;
-	struct imsgbuf	ibuf;
-
-	pid_t		child_pid;
-	int		sv[2], rv;
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
-		err(1, "socketpair");
-	child_pid = fork();
-	switch (child_pid) {
-	case -1:
-		err(1, "fork");
-	case 0:
-		/* Child process */
-		rv = child_main(sv, 0, -1);
-		if (rv == -1)
-			ck_abort_msg("child_main failed.");
-	default:
-		/* Parent process */
-		close(sv[1]);
-		pfd.fd = sv[0];
-		pfd.events = POLLIN|POLLOUT;
-		imsg_init(&ibuf, sv[0]);
-		rv = send_new_file("testdata/random_garbage", &pfd, &ibuf);
+		parent_init(sv, child);
+		parent_process_events(&msg);
+		rv = send_new_file("testdata/test.flac");
 		ck_assert_int_eq(rv, 0);
+	}
+}
+END_TEST
+
+START_TEST (send_new_file_returns_1_on_invalid_file)
+{
+	struct imsg	msg;
+	pid_t		child;
+	int		sv[2], rv;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
+		err(1, "socketpair");
+	child= fork();
+	switch (child) {
+	case -1:
+		err(1, "fork");
+	case 0:
+		/* Child process */
+		rv = child_main(sv, 0, -1);
+		if (rv == -1)
+			ck_abort_msg("child_main failed.");
+	default:
+		/* Parent process */
+		parent_init(sv, child);
+		parent_process_events(&msg);
+		rv = send_new_file("testdata/random_garbage");
+		ck_assert_int_eq(rv, 1);
 	}
 }
 END_TEST
@@ -224,11 +162,10 @@ Suite
 	tc_signals = tcase_create("Signal handling");
 
 	tcase_add_test(tc_cmd, child_exits_on_CMD_EXIT);
-	tcase_add_test(tc_cmd, send_new_file_returns_1_on_valid_file);
-	tcase_add_test(tc_cmd, send_new_file_returns_0_on_invalid_file);
-	tcase_add_test(tc_signals, parent_handles_child_exit);
+	tcase_add_test(tc_cmd, send_new_file_returns_0_on_valid_file);
+	tcase_add_test(tc_cmd, send_new_file_returns_1_on_invalid_file);
+	tcase_add_exit_test(tc_signals, parent_handles_child_exit, 1);
 	tcase_add_test(tc_signals, parent_ignores_false_SIGCHLD);
-	tcase_add_loop_test(tc_signals, parent_handles_term_signal, 0, 3);
 	suite_add_tcase(s, tc_cmd);
 	suite_add_tcase(s, tc_signals);
 	

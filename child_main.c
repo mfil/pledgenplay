@@ -27,7 +27,6 @@ static void	fill_inbuf(struct input *);
 static void	clear_inbuf(struct input *);
 static void	new_file(int, struct input *);
 static int	extract_meta(struct input *);
-static void	stop_play(int *);
 
 int		(*play)(void);
 

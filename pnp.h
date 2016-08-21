@@ -12,14 +12,6 @@ enum {OK, INIT_FAIL, ERROR, CHILD_ERROR, SIGNAL};
 /* output types */
 enum {NONE, OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
 
-int	child_main(int[2], int, int);
-int	parent_main(int[2], pid_t, int *, int *);
-int	send_new_file(char *, struct pollfd *, struct imsgbuf *);
-
-struct meta	*get_meta(struct pollfd *, struct imsgbuf *);
-void		free_meta(struct meta *);
-int		decode(char *, struct pollfd *, struct imsgbuf *);
-
 struct meta {
 	char		*artist;
 	char		*title;
@@ -28,4 +20,9 @@ struct meta {
 	char		*date;
 	char		*time;
 };
+
+int	child_main(int[2], int, int);
+
+void		free_meta(struct meta *);
+int		decode(char *);
 #endif

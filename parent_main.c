@@ -17,55 +17,121 @@
 #include <unistd.h>
 
 #include "comm.h"
+#include "parent.h"
 #include "pnp.h"
 
-void			child_warn(char *, size_t);
 static void	 	signal_handler(int);
-int			ibuf_init(void);
-int 			check_child(pid_t, int *, int *);
-__dead void		error(char *);
+static void		check_signal(void);
 
 static struct imsgbuf	ibuf;
+static struct pollfd	pfd;
 static int		term_sig, caught_sigchld;
+static pid_t		child_pid;
 
-int
-parent_main(int sv[2], pid_t child, int *errval, int *child_status)
+extern char		*__progname;
+
+void
+parent_init(int sv[2], pid_t child)
 {
-	int	rv;
-	pid_t	wait_rv;
+	/* Set up the signal handler. */
+	if (signal(SIGCHLD, signal_handler) == SIG_ERR
+	    || signal(SIGHUP, signal_handler) == SIG_ERR
+	    || signal(SIGINT, signal_handler) == SIG_ERR
+	    || signal(SIGTERM, signal_handler) == SIG_ERR)
+		parent_err("signal");
 
-	signal(SIGCHLD, signal_handler);
-	signal(SIGHUP, signal_handler);
-	signal(SIGINT, signal_handler);
-	signal(SIGTERM, signal_handler);
-	while (1) {
-		if (caught_sigchld)
-			if ((rv = check_child(child, errval, child_status)))
-				return (rv == -1 ? ERROR : SIGNAL);
-		if (term_sig) {
-			*errval = term_sig;
-			kill(child, SIGTERM);
-			while ((wait_rv = waitpid(child, child_status, 0))
-			    == -1) {
-				if (errno != EINTR) {
-					*errval = errno;
-					return (ERROR);
-				}
+	if (close(sv[1]))
+		parent_err("close");
+	imsg_init(&ibuf, sv[0]);
+	child_pid = child;
+	pfd.fd = sv[0];
+	pfd.events = POLLIN|POLLOUT;
+}
+
+void
+parent_msg(int type, char *data, size_t datalen)
+{
+	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, data, datalen)
+	    == -1)
+		parent_err("imsg_compose");
+}
+
+/*
+ * parent_process_events: Handles signals and check for messages from
+ * the child process. It stores the next message in the supplied struct
+ * and returns the length of the message; 0 indicates that there is no
+ * message. If the return value was > 0, the message data needs to be freed
+ * with imsg_free() when no longer needed.
+ *
+ * This function should be called regularly.
+ */
+ssize_t
+parent_process_events(struct imsg *msg)
+{
+	int		nready;
+	ssize_t		rv = 0;
+
+	check_signal();
+	nready = poll(&pfd, 1, 0);
+	if (nready == -1)
+		parent_err("poll");
+	if ((rv = imsg_get(&ibuf, msg)) == -1)
+		parent_err("imsg_get");
+	if (pfd.revents & (POLLIN|POLLHUP)) {
+		if (imsg_read(&ibuf) == -1 && errno != EAGAIN)
+			parent_err("imsg_read");
+	}
+	if (pfd.revents & POLLOUT) {
+		/* Send own messages. */
+		if (imsg_flush(&ibuf) == -1)
+			parent_err("imsg_flush");
+	}
+	return (rv);
+}
+
+/*
+ * check_signal: check if a signal was caught and take the appropriate
+ * action.
+ */
+static void
+check_signal(void) {
+	int child_status;
+
+	if (caught_sigchld) {
+		if (check_child())
+			warnx("spurious SIGCHILD caught");
+		else
+			exit(1);
+	}
+	if (term_sig) {
+		if (kill(child_pid, SIGTERM))
+			parent_err("kill");
+		while (waitpid(child_pid, &child_status, 0) == -1) {
+			if (errno != EINTR) {
+				parent_err("waitpid");
 			}
-			return (SIGNAL);
 		}
+		psignal(term_sig, __progname);
+		exit(1);
 	}
 }
 
+void
+stop_child(void)
+{
+	parent_msg(CMD_EXIT, NULL, 0);
+	if (imsg_flush(&ibuf) == -1)
+		parent_err("imsg_flush");
+}
+
 struct meta
-*get_meta(struct pollfd *pfd, struct imsgbuf *ibuf)
+*get_meta()
 {
 	struct meta	*mdata = malloc(sizeof(struct meta));
-	struct imsg	imsg;
+	struct imsg	msg;
 	char		**field = NULL, *trackstr;
-	const char	*err;
+	const char	*errstr = NULL;
 	size_t		len;
-	int		nready;
 
 	if (mdata == NULL)
 		return (NULL);
@@ -76,154 +142,115 @@ struct meta
 	mdata->date = NULL;
 	mdata->time = NULL;
 
-	if (imsg_compose(ibuf, (u_int32_t)CMD_META, 0, getpid(), -1, NULL, 0)
-	    == -1)
-		goto fail;
+	parent_msg(CMD_META, NULL, 0);
 	while (1) {
-		nready = poll(pfd, 1, 0);
-		if (nready == -1)
-			goto fail;
-		if (pfd->revents & POLLOUT) {
-			if (imsg_flush(ibuf) == -1)
+		if (parent_process_events(&msg) > 0) {
+			field = NULL;
+			switch ((int)msg.hdr.type) {
+			case (META_ARTIST):
+				field = &mdata->artist;
+				break;
+			case (META_TITLE):
+				field = &mdata->title;
+				break;
+			case (META_ALBUM):
+				field = &mdata->album;
+				break;
+			case (META_TRACKNO):
+				/* Store the track number as an int. */
+				len = msg.hdr.len - IMSG_HEADER_SIZE;
+				trackstr = strndup(msg.data, len);
+				if (trackstr == NULL)
+					parent_err("strndup");
+				mdata->trackno = (int)strtonum(trackstr, 0,
+				    INT_MAX, &errstr);
+				if (errstr != NULL)
+					mdata->trackno = -1;
+				free(trackstr);
+				break;
+			case (META_DATE):
+				field = &mdata->date;
+				break;
+			case (META_TIME):
+				field = &mdata->time;
+				break;
+			case (MSG_WARN):
+				len = msg.hdr.len - IMSG_HEADER_SIZE;
+				child_warn(msg.data, len);
+				break;
+			case (META_END):
+				goto done;
+			case (MSG_FILE_ERR):
 				goto fail;
-			break;
-		}
-	}
-	while (1) {
-		nready = poll(pfd, 1, 0);
-		if (nready == -1)
-			goto fail;
-		if (pfd->revents & (POLLIN|POLLHUP)) {
-			if (imsg_read(ibuf) == -1 && errno != EAGAIN)
-				goto fail;
-			while (imsg_get(ibuf, &imsg) > 0) {
-				field = NULL;
-				switch ((int)imsg.hdr.type) {
-				case (META_ARTIST):
-					field = &mdata->artist;
-					break;
-				case (META_TITLE):
-					field = &mdata->title;
-					break;
-				case (META_ALBUM):
-					field = &mdata->album;
-					break;
-				case (META_TRACKNO):
-					/* Store the track number as an int. */
-					len = imsg.hdr.len - IMSG_HEADER_SIZE;
-					trackstr = strndup(imsg.data, len);
-					if (trackstr == NULL)
-						goto fail;
-					mdata->trackno = (int)strtonum(trackstr,
-					    0, INT_MAX, &err);
-					if (err != NULL)
-						mdata->trackno = -1;
-					free(trackstr);
-					break;
-				case (META_DATE):
-					field = &mdata->date;
-					break;
-				case (META_TIME):
-					field = &mdata->time;
-					break;
-				case (MSG_WARN):
-					len = imsg.hdr.len - IMSG_HEADER_SIZE;
-					child_warn(imsg.data, len);
-					break;
-				case (META_END):
-					goto done;
-				case (MSG_FILE_ERR):
-					goto fail;
-				}
-				if (field != NULL && imsg.data != NULL) {
-					len = imsg.hdr.len - IMSG_HEADER_SIZE;
-					*field = strndup(imsg.data, len);
-					if (*field == NULL)
-						goto fail;
-				}
-				imsg_free(&imsg);
 			}
+			if (field != NULL && msg.data != NULL) {
+				len = msg.hdr.len - IMSG_HEADER_SIZE;
+				*field = strndup(msg.data, len);
+				if (*field == NULL)
+					parent_err("strndup");
+			}
+			imsg_free(&msg);
 		}
 	}
 
 done:
-	imsg_free(&imsg);
+	imsg_free(&msg);
 	return (mdata);
 
 fail:
+	imsg_free(&msg);
 	free_meta(mdata);
 	return (NULL);
 }
 
 int
-send_new_file(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
+send_new_file(char *infile)
 {
 	struct imsg	msg;
-	int		in_fd, nready, rv = -1;
-	ssize_t		rv_get;
+	int		in_fd, rv = -1;
 
 	in_fd = open(infile, O_RDONLY|O_NONBLOCK);
-	if (imsg_compose(ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0) == -1)
-		return (-1);
-	while (rv == -1) {
-		nready = poll(pfd, 1, 1);
-		if (nready < 0)
-			return (-1);
-		if (nready == 0)
-			continue;
-		if ((pfd->revents & POLLOUT) && imsg_flush(ibuf) == -1)
-			return (-1);
-		if ((pfd->revents & (POLLIN|POLLHUP) && imsg_read(ibuf) == -1))
-			return (-1);
-		while ((rv_get = imsg_get(ibuf, &msg)) > 0) {
+	if (imsg_compose(&ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0)
+	    == -1)
+		parent_err("imsg_compose");
+	while (1) {
+		if (parent_process_events(&msg) > 0) {
 			switch (msg.hdr.type) {
 			case (MSG_ACK_FILE):
-				rv = 1;
+				rv = 0;
 				break;
 			case (MSG_FILE_ERR):
-				rv = 0;
+				rv = 1;
 				break;
 			default:
 				break;
 			}
 			imsg_free(&msg);
+			if (rv != -1)
+				return (rv);
 		}
-		if (rv_get == -1)
-			return (-1);
 	}
 	return (rv);
 }
 
 int
-decode(char *infile, struct pollfd *pfd, struct imsgbuf *ibuf)
+decode(char *infile)
 {
 	struct imsg	msg;
-	int		rv, nready;
-	ssize_t		rv_get;
 
-	if ((rv = send_new_file(infile, pfd, ibuf)) < 1)
-		return (rv);
-	if (imsg_compose(ibuf, (u_int32_t)CMD_PLAY, 0, 0, -1, NULL, 0) == -1)
-		return (-1);
+	if (send_new_file(infile))
+		return (1);
+	parent_msg((u_int32_t)CMD_PLAY, NULL, 0);
 	while (1) {
-		nready = poll(pfd, 1, 0);
-		if (nready < 0)
-			return (-1);
-		if (nready == 0)
-			continue;
-		if ((pfd->revents & POLLOUT) && imsg_flush(ibuf) == -1)
-			return (-1);
-		if (pfd->revents & POLLIN && imsg_read(ibuf) == -1)
-			return (-1);
-		while ((rv_get = imsg_get(ibuf, &msg)) > 0) {
+		if (parent_process_events(&msg) > 0) {
 			switch (msg.hdr.type) {
 			case MSG_DONE:
 				imsg_free(&msg);
 				return (0);
 			}
+			imsg_free(&msg);
 		}
 	}
-	return (-1);
 }
 
 void
@@ -261,18 +288,39 @@ signal_handler(int s)
 	}
 }
 
-/* check_child: Return 1 if child has exited, 0 if not and -1 on error. */
+/* check_child: Return 0 if child has exited, 1 if not. */
 int
-check_child(pid_t child, int *errval, int *status)
+check_child(void)
 {
+	int	status;
 	pid_t	rv;
 
-	while ((rv = waitpid(child, status, WNOHANG)) == -1) {
+	while ((rv = waitpid(child_pid, &status, WNOHANG)) == -1) {
+		if (errno != EINTR)
+			parent_err("waitpid");
+	}
+	return (rv == child_pid ? 0 : 1);
+}
+
+/* parent_err: kill child process and exit with error message. */
+__dead void
+parent_err(const char *errmsg)
+{
+	int	child_status, saved_errno, wait_rv;
+
+	saved_errno = errno;
+	if (kill(child_pid, SIGTERM)) {
+		warn("kill");
+		errno = saved_errno;
+		err(1, "%s", errmsg);
+	}
+	while ((wait_rv = waitpid(child_pid, &child_status, 0)) == -1) {
 		if (errno != EINTR) {
-			*errval = errno;
-			return (-1);
+			warn("waitpid");
+			errno = saved_errno;
+			err(1, "%s", errmsg);
 		}
 	}
-	*errval = SIGCHLD;
-	return (rv == child ? 1 : 0);
+	errno = saved_errno;
+	err(1, "%s", errmsg);
 }
