@@ -9,10 +9,11 @@
 #include "comm.h"
 #include "file.h"
 
-static int	vorbis_to_type(char *);
-static int	id3v2_to_type(unsigned char *);
-static size_t	be_to_uint(unsigned char *);
-static size_t	le_to_uint(unsigned char *);
+static int		vorbis_to_type(char *);
+static int		id3v2_to_type(unsigned char *);
+static size_t		be_to_uint(unsigned char *);
+static size_t		le_to_uint(unsigned char *);
+static unsigned char	*uint_to_le(unsigned int, unsigned char *);
 
 int
 filetype(int fd)
@@ -43,8 +44,7 @@ filetype(int fd)
 		/* mp3 framesync: 12 bits set to 1. */
 		return (MP3);
 	if (nread >= 4 && memcmp(buf, "fLaC", 4) == 0)
-		return (FLAC);
-	if (nread == 22 && memcmp(buf, "RIFF", 4) == 0 &&
+		return (FLAC); if (nread == 22 && memcmp(buf, "RIFF", 4) == 0 &&
 	    memcmp(buf+8, "WAVE", 4) == 0 &&
 	    memcmp(buf+12, "fmt ", 4) == 0 &&
 	    memcmp(buf+20, wave_pcm_tag, sizeof(wave_pcm_tag)) == 0)
@@ -251,16 +251,69 @@ vorbis_to_type(char *key)
 	return (-1);
 }
 
-/* Decode big-endian bytes. */
+int
+write_wav_header(FILE *f, unsigned int channels, unsigned int rate,
+    unsigned int bps)
+{
+	unsigned char	buf[4];
+	size_t		bytes;
+
+	if (bps % 8 != 0)
+		return (-1);
+	bytes = fwrite("RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00",
+	    1, 22, f);
+	/*
+	 * Bytes 4-7 later store the size of the whole file (excluding the
+	 * RIFF tag). Bytes 17-19 are the size of the fmt chunk (16 bytes).
+	 * Bytes 20-21 are the tag for the WAVE PCM format.
+	 */
+	if (bytes < 22)
+		return (-1);
+	bytes += fwrite(uint_to_le(channels, buf), 1, 2, f);
+	if (bytes < 24)
+		return (-1);
+	bytes += fwrite(uint_to_le(rate, buf), 1, 4, f);
+	if (bytes < 28)
+		return (-1);
+	bytes += fwrite(uint_to_le(rate*channels*bps/8, buf), 1, 4, f);
+	/* Data rate (bytes/s) */
+	if (bytes < 32)
+		return (-1);
+	bytes += fwrite(uint_to_le(channels*bps/8, buf), 1, 2, f);
+	/* Block size in bytes. (Block = One sample per channel) */
+	if (bytes < 34)
+		return (-1);
+	bytes += fwrite(uint_to_le(bps, buf), 1, 2, f);
+	if (bytes < 36)
+		return (-1);
+	bytes += fwrite("data\00\00\00\00", 1, 8, f);
+	if (bytes < 44)
+		return (-1);
+	return ((int)bytes);
+}
+
+/* Decode/encode big and little endian */
 static size_t
 be_to_uint(unsigned char *d)
 {
 	return ((d[0] << 24) + (d[1] << 16) + (d[2] << 8) + d[3]);
 }
 
-/* Decode little-endian bytes. */
 static size_t
 le_to_uint(unsigned char *d)
 {
 	return (d[0] + (d[1] << 8) + (d[2] << 16) + (d[3] << 24));
+}
+
+static unsigned char *
+uint_to_le(unsigned int n, unsigned char *buf)
+{
+	/* buf must be able to hold four bytes. */
+	int 	i;
+
+	for (i = 0; i < 4; i++) {
+		buf[i] = n % (1 << 8);
+		n >>= 8;
+	}
+	return (buf);
 }

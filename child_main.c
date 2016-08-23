@@ -40,8 +40,8 @@ child_main(int sv[2], int output_type, int out_fd)
 {
 	struct state	state;
 
-	//if (pledge("stdio recvfd", NULL) == -1)
-		//return (-1);
+	if (pledge("stdio recvfd", NULL) == -1)
+		return (-1);
 	close(0);
 	close(1);
 	close(sv[0]);
@@ -206,7 +206,7 @@ new_file(int fd, struct input *in)
 	/* Close the old file (if there was one). */
 	if (in->fd != -1) {
 		if (close(in->fd) != 0)
-			msgwarn("fclose");
+			msgwarn("close");
 		in->fd = -1;
 		in->fmt = UNKNOWN;
 		clear_inbuf(in);

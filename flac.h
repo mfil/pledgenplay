@@ -12,6 +12,7 @@ struct flac_client_data {
 	unsigned int			rate, channels;
 	int				error;
 	FLAC__StreamDecoderErrorStatus	error_status;
+	size_t				bytes_written;
 };
 
 int	play_flac(struct input *, struct output *, struct state *);

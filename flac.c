@@ -135,6 +135,12 @@ write_cb_file_raw(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
 
+FLAC__StreamDecoderWriteStatus
+write_cb_file_wav(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
+    const FLAC__int32 *const decoded_samples[], void *client_data)
+{
+}
+
 void
 err_cb(const FLAC__StreamDecoder *dec,
     const FLAC__StreamDecoderErrorStatus status, void *client_data)
@@ -157,8 +163,19 @@ play_flac(struct input *in, struct output *out, struct state *state)
 	cdata.in = in;
 	cdata.state = state;
 	cdata.out = out;
+	cdata.error = 0;
+	cdata.bytes_written = 0;
 	if ((dec = init_flac_decoder(&cdata)) == NULL)
 		return (-1);
+	if (FLAC__stream_decoder_process_until_end_of_metadata(dec) == false) {
+		if (cdata.error)
+			flac_error_msg(cdata.error_status);
+		cleanup_flac_decoder(dec);
+		return (-1);
+	}
+	if (out->type == OUT_WAV_FILE)
+		//cdata.bytes_written += write_wav_header(FILE *f, &cdata);
+		;
 
 	while (1) {
 		process_events(in, state);

@@ -179,6 +179,49 @@ START_TEST (decode_converts_flac_to_raw)
 }
 END_TEST
 
+START_TEST (test_write_wav_header)
+{
+	FILE	*f = fopen("scratchspace/wav_hdr", "w");
+	int	bytes_written, cmp;
+
+	assert(f != NULL);
+	bytes_written = write_wav_header(f, 2, 44100, 16);
+	assert(fclose(f) != EOF);
+	ck_assert_int_eq(bytes_written, 44);
+	cmp = system("cmp ./testdata/wav_hdr ./scratchspace/wav_hdr 1>/dev/null");
+	ck_assert_int_eq(cmp, 0);
+}
+END_TEST
+
+START_TEST (decode_converts_flac_to_wav)
+{
+	pid_t		child_pid;
+	int		rv, cmp, sv[2], out_fd;
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
+		err(1, "socketpair");
+	out_fd = open("./scratchspace/test.wav", O_WRONLY|O_CREAT|O_TRUNC,
+	    S_IRUSR|S_IWUSR);
+	if (out_fd == -1)
+		err(1, "open");
+	child_pid = fork();
+	switch (child_pid) {
+	case -1:
+		err(1, "fork");
+	case 0:
+		/* Child process */
+		child_main(sv, OUT_WAV_FILE, out_fd);
+	default:
+		/* Parent process */
+		parent_init(sv, child_pid);
+		rv = decode("./testdata/test.flac");
+		ck_assert_int_eq(rv, 0);
+		cmp = system("cmp ./testdata/test.wav ./scratchspace/test.wav 1>/dev/null");
+		ck_assert_int_eq(cmp, 0);
+	}
+}
+END_TEST
+
 Suite
 *decode_suite(void)
 {
@@ -200,6 +243,8 @@ Suite
 	suite_add_tcase(s, tc_meta);
 
 	tcase_add_test(tc_dec, decode_converts_flac_to_raw);
+	tcase_add_test(tc_dec, test_write_wav_header);
+	tcase_add_test(tc_dec, decode_converts_flac_to_wav);
 	suite_add_tcase(s, tc_dec);
 	
 	return (s);
