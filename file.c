@@ -262,7 +262,7 @@ write_wav_header(FILE *f, unsigned int channels, unsigned int rate,
 
 	if (bps % 8 != 0 || samples % channels != 0)
 		return (-1);
-	data_size = samples*bps/8;
+	data_size = samples*channels*bps/8;
 	if (samples > UINT32_MAX || data_size > UINT32_MAX)
 		/* The file is too large for the WAVE format. */
 		return (-1);
