@@ -21,52 +21,26 @@
 #include "pnp.h"
 /* Filetype detection */
 
-START_TEST (filetype_recognizes_flac)
+START_TEST (filetype_identifies_files)
 {
+	char	*files[4] = {"./testdata/test.wav", "./testdata/test.flac",
+	    "./testdata/test.mp3", "./testdata/random_garbage"};
+	int	types[4] = {WAVE_PCM, FLAC, MP3, UNKNOWN};
 	int	fd;
-	fd = open("./testdata/test.flac", O_RDONLY);
+	fd = open(files[_i], O_RDONLY);
 	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), FLAC);
+	ck_assert_int_eq(filetype(fd), types[_i]);
 	close(fd);
 }
 END_TEST
 
-START_TEST (filetype_recognizes_mp3)
-{
-	int	fd;
-	fd = open("./testdata/test.mp3", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), MP3);
-	close(fd);
-}
-END_TEST
-
-START_TEST (filetype_recognizes_wav)
-{
-	int	fd;
-	fd = open("./testdata/test.wav", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), WAVE_PCM);
-	close(fd);
-}
-END_TEST
-
-START_TEST (filetype_recognizes_unknown)
-{
-	int	fd;
-	fd = open("./testdata/random_garbage", O_RDONLY);
-	assert(fd != -1);
-	ck_assert_int_eq(filetype(fd), UNKNOWN);
-	close(fd);
-}
-END_TEST
-
-char	*files[] = {"./testdata/with_id3v2.wav", "./testdata/with_id3v2.flac",
-    "./testdata/with_id3v2.mp3"};
-int	types[] = {WAVE_PCM, FLAC, MP3};
 START_TEST (filetype_skips_id3v2)
 {
+	char	*files[] = {"./testdata/with_id3v2.wav",
+	    "./testdata/with_id3v2.flac", "./testdata/with_id3v2.mp3"};
+	int	types[] = {WAVE_PCM, FLAC, MP3};
 	int	fd;
+
 	fd = open(files[_i], O_RDONLY);
 	assert(fd != -1);
 	ck_assert_int_eq(filetype(fd), types[_i]);
@@ -216,10 +190,7 @@ Suite
 	tc_meta = tcase_create("Metadata extraction");
 	tc_dec = tcase_create("Decoding");
 
-	tcase_add_test(tc_filetype, filetype_recognizes_flac);
-	tcase_add_test(tc_filetype, filetype_recognizes_mp3);
-	tcase_add_test(tc_filetype, filetype_recognizes_wav);
-	tcase_add_test(tc_filetype, filetype_recognizes_unknown);
+	tcase_add_loop_test(tc_filetype, filetype_identifies_files, 0, 4);
 	tcase_add_loop_test(tc_filetype, filetype_skips_id3v2, 0, 3);
 	suite_add_tcase(s, tc_filetype);
 
