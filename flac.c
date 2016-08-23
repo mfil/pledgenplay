@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -107,6 +108,7 @@ mdata_cb(const FLAC__StreamDecoder *dec, const FLAC__StreamMetadata *mdata,
 		cd->samples = mdata->data.stream_info.total_samples;
 		cd->rate = mdata->data.stream_info.sample_rate;
 		cd->channels = mdata->data.stream_info.channels;
+		cd->bps = mdata->data.stream_info.bits_per_sample;
 	}
 }
 
@@ -133,12 +135,6 @@ write_cb_file_raw(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 			}
 		}
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
-}
-
-FLAC__StreamDecoderWriteStatus
-write_cb_file_wav(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
-    const FLAC__int32 *const decoded_samples[], void *client_data)
-{
 }
 
 void
@@ -173,9 +169,12 @@ play_flac(struct input *in, struct output *out, struct state *state)
 		cleanup_flac_decoder(dec);
 		return (-1);
 	}
-	if (out->type == OUT_WAV_FILE)
-		//cdata.bytes_written += write_wav_header(FILE *f, &cdata);
-		;
+	if (out->type == OUT_WAV_FILE) {
+		if (cdata.samples > UINT32_MAX)
+			return (-1);
+		cdata.bytes_written += write_wav_header(out->out.fp,
+		    cdata.channels, cdata.rate, cdata.bps, cdata.samples);
+	}
 
 	while (1) {
 		process_events(in, state);

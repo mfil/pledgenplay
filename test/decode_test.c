@@ -185,7 +185,7 @@ START_TEST (test_write_wav_header)
 	int	bytes_written, cmp;
 
 	assert(f != NULL);
-	bytes_written = write_wav_header(f, 2, 44100, 16);
+	bytes_written = write_wav_header(f, 2, 44100, 16, 0);
 	assert(fclose(f) != EOF);
 	ck_assert_int_eq(bytes_written, 44);
 	cmp = system("cmp ./testdata/wav_hdr ./scratchspace/wav_hdr 1>/dev/null");

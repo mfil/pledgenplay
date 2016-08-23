@@ -8,8 +8,8 @@ struct flac_client_data {
 	struct input			*in;
 	struct state			*state;
 	struct output			*out;
-	u_int64_t			samples;
-	unsigned int			rate, channels;
+	uint64_t			samples;
+	unsigned int			bps, rate, channels;
 	int				error;
 	FLAC__StreamDecoderErrorStatus	error_status;
 	size_t				bytes_written;

@@ -3,6 +3,7 @@
 #include <iconv.h>
 #include <unistd.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -253,19 +254,29 @@ vorbis_to_type(char *key)
 
 int
 write_wav_header(FILE *f, unsigned int channels, unsigned int rate,
-    unsigned int bps)
+    unsigned int bps, uint64_t samples)
 {
 	unsigned char	buf[4];
+	uint64_t	data_size;
 	size_t		bytes;
 
-	if (bps % 8 != 0)
+	if (bps % 8 != 0 || samples % channels != 0)
 		return (-1);
-	bytes = fwrite("RIFF\x00\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00",
-	    1, 22, f);
+	data_size = samples*bps/8;
+	if (samples > UINT32_MAX || data_size > UINT32_MAX)
+		/* The file is too large for the WAVE format. */
+		return (-1);
+	bytes = fwrite("RIFF", 1, 4, f);
+	if (bytes < 4)
+		return (-1);
+	/* Write the file size (excluding the RIFF tag). */
+	bytes += fwrite(uint_to_le(data_size + 40, buf), 1, 4, f);
+	if (bytes < 8)
+		return (-1);
+	bytes += fwrite("WAVEfmt \x10\x00\x00\x00\x01\x00", 1, 14, f);
 	/*
-	 * Bytes 4-7 later store the size of the whole file (excluding the
-	 * RIFF tag). Bytes 17-19 are the size of the fmt chunk (16 bytes).
-	 * Bytes 20-21 are the tag for the WAVE PCM format.
+	 * Bytes 9-15 are the size of the fmt chunk (16 bytes).
+	 * The last two bytes are the tag for the WAVE PCM format.
 	 */
 	if (bytes < 22)
 		return (-1);
@@ -286,7 +297,10 @@ write_wav_header(FILE *f, unsigned int channels, unsigned int rate,
 	bytes += fwrite(uint_to_le(bps, buf), 1, 2, f);
 	if (bytes < 36)
 		return (-1);
-	bytes += fwrite("data\00\00\00\00", 1, 8, f);
+	bytes += fwrite("data", 1, 4, f);
+	if (bytes < 40)
+		return (-1);
+	bytes += fwrite(uint_to_le(data_size, buf), 1, 4, f);
 	if (bytes < 44)
 		return (-1);
 	return ((int)bytes);
