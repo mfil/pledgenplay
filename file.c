@@ -260,7 +260,7 @@ write_wav_header(FILE *f, unsigned int channels, unsigned int rate,
 	uint64_t	data_size;
 	size_t		bytes;
 
-	if (bps % 8 != 0 || samples % channels != 0)
+	if (bps % 8 != 0)
 		return (-1);
 	data_size = samples*channels*bps/8;
 	if (samples > UINT32_MAX || data_size > UINT32_MAX)
@@ -269,8 +269,8 @@ write_wav_header(FILE *f, unsigned int channels, unsigned int rate,
 	bytes = fwrite("RIFF", 1, 4, f);
 	if (bytes < 4)
 		return (-1);
-	/* Write the file size (excluding the RIFF tag). */
-	bytes += fwrite(uint_to_le(data_size + 40, buf), 1, 4, f);
+	/* Write the file size (excluding the RIFF tag and the size). */
+	bytes += fwrite(uint_to_le(data_size + 36, buf), 1, 4, f);
 	if (bytes < 8)
 		return (-1);
 	bytes += fwrite("WAVEfmt \x10\x00\x00\x00\x01\x00", 1, 14, f);

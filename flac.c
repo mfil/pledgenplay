@@ -26,7 +26,7 @@ void mdata_cb(const FLAC__StreamDecoder *, const FLAC__StreamMetadata *,
     void *);
 FLAC__StreamDecoderReadStatus read_cb(const FLAC__StreamDecoder *,
     FLAC__byte *, size_t *, void *);
-FLAC__StreamDecoderWriteStatus write_cb_file_raw (const FLAC__StreamDecoder *,
+FLAC__StreamDecoderWriteStatus write_cb_file (const FLAC__StreamDecoder *,
     const FLAC__Frame *, const FLAC__int32 *const [], void *);
 void err_cb (const FLAC__StreamDecoder *, const FLAC__StreamDecoderErrorStatus,
     void *);
@@ -38,8 +38,9 @@ init_flac_decoder(struct flac_client_data *cdata)
 	FLAC__StreamDecoder			*dec;
 
 	switch (cdata->out->type) {
+	case (OUT_WAV_FILE):
 	case (OUT_RAW):
-		write_cb = write_cb_file_raw;
+		write_cb = write_cb_file;
 		break;
 	default:
 		msgwarnx("invalid output type\n");
@@ -113,7 +114,7 @@ mdata_cb(const FLAC__StreamDecoder *dec, const FLAC__StreamMetadata *mdata,
 }
 
 FLAC__StreamDecoderWriteStatus
-write_cb_file_raw(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
+write_cb_file(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
     const FLAC__int32 *const decoded_samples[], void *client_data)
 {
 	struct flac_client_data	*cdata;
@@ -133,6 +134,7 @@ write_cb_file_raw(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 				return
 				    (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
 			}
+			cdata->bytes_written += bps;
 		}
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
@@ -188,6 +190,11 @@ play_flac(struct input *in, struct output *out, struct state *state)
 			}
 			if (FLAC__stream_decoder_get_state(dec)
 			    == FLAC__STREAM_DECODER_END_OF_STREAM) {
+				/* Check if we need a padding byte. */
+				if (out->type == OUT_WAV_FILE
+				    && cdata.bytes_written % 2 != 0
+				    && fwrite("\0", 1, 1, out->out.fp) < 1)
+					return (-1);
 				fclose(out->out.fp);
 				msg(MSG_DONE, NULL, 0);
 				return(0);
