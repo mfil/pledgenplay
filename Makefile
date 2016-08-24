@@ -9,7 +9,9 @@ LIBS=-lutil -liconv -lFLAC
 TESTDIR=test
 DEPENDS=pnp.h comm.h flac.h
 
-all: child_main.o file.o flac.o parent_main.o
+pnp: main.o child_main.o file.o flac.o parent_main.o
+	$(CC) $(CFLAGS) $(IDIRS) $(LDIRS) $(LIBS) -o pnp main.o child_main.o \
+	    file.o flac.o parent_main.o 
 
 test: decode_test ipc_test
 
