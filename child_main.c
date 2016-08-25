@@ -28,8 +28,6 @@ static void	clear_inbuf(struct input *);
 static void	new_file(int, struct input *);
 static int	extract_meta(struct input *);
 
-int		(*play)(void);
-
 static struct imsgbuf	ibuf;
 static struct pollfd	pfd[2];
 static struct output	outp;
