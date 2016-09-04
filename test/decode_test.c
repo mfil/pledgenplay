@@ -17,7 +17,6 @@
 
 #include "comm.h"
 #include "file.h"
-#include "parent.h"
 #include "pnp.h"
 /* Filetype detection */
 

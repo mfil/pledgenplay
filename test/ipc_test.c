@@ -16,7 +16,6 @@
 #include <unistd.h>
 
 #include "comm.h"
-#include "parent.h"
 #include "pnp.h"
 
 START_TEST (child_exits_on_CMD_EXIT)

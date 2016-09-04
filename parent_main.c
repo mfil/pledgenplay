@@ -17,7 +17,6 @@
 #include <unistd.h>
 
 #include "comm.h"
-#include "parent.h"
 #include "pnp.h"
 
 static void	 	signal_handler(int);

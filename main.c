@@ -10,7 +10,6 @@
 #include <unistd.h>
 
 #include "pnp.h"
-#include "parent.h"
 
 int
 main(int argc, char **argv)
