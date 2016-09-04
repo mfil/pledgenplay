@@ -27,6 +27,8 @@
 
 #include "pnp.h"
 
+extern char	*__progname;
+
 int
 main(int argc, char **argv)
 {
@@ -50,6 +52,11 @@ main(int argc, char **argv)
 		case 'r':
 			rawflag = 1;
 			break;
+		default:
+			(void)fprintf(stderr,
+			    "usage: %s [-dr] [-o output_file] file\n",
+			    __progname);
+			exit(1);
 		}
 	}
 	argc -= optind;
