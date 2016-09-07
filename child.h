@@ -19,12 +19,13 @@
 
 #include <stdio.h>
 
-union out {
-	FILE	*fp;
+union handle {
+	FILE		*fp;
+	struct sio_hdl	*sio;
 };
-struct output {
+struct out {
 	int		type;
-	union out	out;
+	union handle	handle;
 };
 struct input {
 	int	fd;

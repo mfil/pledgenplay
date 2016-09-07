@@ -46,7 +46,7 @@ static int	extract_meta(struct input *);
 
 static struct imsgbuf	ibuf;
 static struct pollfd	pfd[2];
-static struct output	outp;
+static struct out	out;
 struct input		*in;
 
 int
@@ -60,10 +60,10 @@ child_main(int sv[2], int output_type, int out_fd)
 	close(1);
 	close(sv[0]);
 	if (output_type == OUT_RAW || output_type == OUT_WAV_FILE) {
-		outp.out.fp = fdopen(out_fd, "w");
-		if (outp.out.fp == NULL)
+		out.handle.fp = fdopen(out_fd, "w");
+		if (out.handle.fp == NULL)
 			fatal("fdopen");
-		outp.type = output_type;
+		out.type = output_type;
 	}
 	memset(&state, 0, sizeof(state));
 
@@ -91,7 +91,7 @@ child_main(int sv[2], int output_type, int out_fd)
 			state.task_start_play = 0;
 			switch (in->fmt) {
 			case (FLAC):
-				play_flac(in, &outp, &state);
+				play_flac(in, &out, &state);
 				break;
 			default:
 				msgwarnx("Not implemented.");

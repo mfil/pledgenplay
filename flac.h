@@ -23,7 +23,7 @@
 struct flac_client_data {
 	struct input			*in;
 	struct state			*state;
-	struct output			*out;
+	struct out			*out;
 	uint64_t			samples;
 	unsigned int			bps, rate, channels;
 	int				error;
@@ -31,6 +31,6 @@ struct flac_client_data {
 	size_t				bytes_written;
 };
 
-int	play_flac(struct input *, struct output *, struct state *);
+int	play_flac(struct input *, struct out *, struct state *);
 int	extract_meta_flac(struct input *);
 #endif

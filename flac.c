@@ -139,7 +139,7 @@ write_cb_file(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	char			*sample;
 
 	cdata = (struct flac_client_data *)client_data;
-	outfp = cdata->out->out.fp;
+	outfp = cdata->out->handle.fp;
 	bsiz = frame->header.blocksize;
 	bps = frame->header.bits_per_sample/8;
 	channels = frame->header.channels;
@@ -167,7 +167,7 @@ err_cb(const FLAC__StreamDecoder *dec,
 }
 
 int
-play_flac(struct input *in, struct output *out, struct state *state)
+play_flac(struct input *in, struct out *out, struct state *state)
 {
 	struct flac_client_data		cdata;
 	FLAC__StreamDecoder		*dec;
@@ -190,7 +190,7 @@ play_flac(struct input *in, struct output *out, struct state *state)
 	if (out->type == OUT_WAV_FILE) {
 		if (cdata.samples > UINT32_MAX)
 			return (-1);
-		cdata.bytes_written += write_wav_header(out->out.fp,
+		cdata.bytes_written += write_wav_header(out->handle.fp,
 		    cdata.channels, cdata.rate, cdata.bps, cdata.samples);
 	}
 
@@ -209,9 +209,9 @@ play_flac(struct input *in, struct output *out, struct state *state)
 				/* Check if we need a padding byte. */
 				if (out->type == OUT_WAV_FILE
 				    && cdata.bytes_written % 2 != 0
-				    && fwrite("\0", 1, 1, out->out.fp) < 1)
+				    && fwrite("\0", 1, 1, out->handle.fp) < 1)
 					return (-1);
-				fclose(out->out.fp);
+				fclose(out->handle.fp);
 				msg(MSG_DONE, NULL, 0);
 				return(0);
 			}
