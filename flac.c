@@ -15,6 +15,7 @@
  */
 
 #include <fcntl.h>
+#include <sndio.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -170,6 +171,7 @@ int
 play_flac(struct input *in, struct out *out, struct state *state)
 {
 	struct flac_client_data		cdata;
+	struct sio_par			par;
 	FLAC__StreamDecoder		*dec;
 
 	state->play = PLAYING;
@@ -192,6 +194,33 @@ play_flac(struct input *in, struct out *out, struct state *state)
 			return (-1);
 		cdata.bytes_written += write_wav_header(out->handle.fp,
 		    cdata.channels, cdata.rate, cdata.bps, cdata.samples);
+	}
+	else if (out->type == OUT_SNDIO) {
+		/* Configure the playback device. */
+		sio_initpar(&par);
+		par.bits = 8*cdata.bps;
+		par.bps = cdata.bps;
+		par.sig = 1;
+		par.le = 1;
+		par.pchan = cdata.channels;
+		par.rate = cdata.rate;
+		par.xrun = SIO_IGNORE;
+		if (sio_setpar(out->handle.sio, &par) == 0)
+			fatal("sio_setpar");
+		/*
+		 * Now check if the parameters were set correctly.
+		 * According to sio_open(3), a difference of 0.5% in the rate
+		 * should be negligible.
+		 */
+		if (sio_getpar(out->handle.sio, &par) == 0)
+			fatal("sio_getpar");
+		if (par.bits != 8*cdata.bps || par.bps != cdata.bps
+		    || par.sig != 1 || par.le != 1
+		    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
+		    || par.rate < (995*cdata.rate)/1000
+		    || par.rate > (1005*cdata.rate)/1000) {
+			fatal("setting sndio parameters failed");
+		}
 	}
 
 	while (1) {
