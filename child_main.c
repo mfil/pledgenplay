@@ -53,7 +53,9 @@ child_main(int sv[2], struct out *out)
 {
 	struct state	state;
 
-	if (pledge("stdio recvfd", NULL) == -1)
+	if (out->type == OUT_SNDIO && pledge("stdio recvfd audio", NULL) == -1)
+		return (-1);
+	else if (pledge("stdio recvfd", NULL) == -1)
 		return (-1);
 	close(0);
 	close(1);
