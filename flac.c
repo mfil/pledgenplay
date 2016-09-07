@@ -45,6 +45,8 @@ FLAC__StreamDecoderReadStatus read_cb(const FLAC__StreamDecoder *,
     FLAC__byte *, size_t *, void *);
 FLAC__StreamDecoderWriteStatus write_cb_file (const FLAC__StreamDecoder *,
     const FLAC__Frame *, const FLAC__int32 *const [], void *);
+FLAC__StreamDecoderWriteStatus write_cb_sndio (const FLAC__StreamDecoder *,
+    const FLAC__Frame *, const FLAC__int32 *const [], void *);
 void err_cb (const FLAC__StreamDecoder *, const FLAC__StreamDecoderErrorStatus,
     void *);
 
@@ -55,6 +57,9 @@ init_flac_decoder(struct flac_client_data *cdata)
 	FLAC__StreamDecoder			*dec;
 
 	switch (cdata->out->type) {
+	case (OUT_SNDIO):
+		write_cb = write_cb_sndio;
+		break;
 	case (OUT_WAV_FILE):
 	case (OUT_RAW):
 		write_cb = write_cb_file;
@@ -182,7 +187,11 @@ write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 			bufp1 += bps;
 		}
 	while (bufp2 < bufp1) {
-		nwr = sio_write(cdata->out->handle.sio, buf, bufp1 - bufp2);
+		nwr = sio_write(cdata->out->handle.sio, bufp2, bufp1 - bufp2);
+		if (nwr == 0 && sio_eof(cdata->out->handle.sio)) {
+			dprintf(2, "sio error\n");
+			return (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
+		}
 		bufp2 += nwr;
 		process_events(cdata->in, cdata->state);
 	}
@@ -232,8 +241,8 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	else if (out->type == OUT_SNDIO) {
 		/* Configure the playback device. */
 		sio_initpar(&par);
-		par.bits = 8*cdata.bps;
-		par.bps = cdata.bps;
+		par.bits = cdata.bps;
+		par.bps = cdata.bps/8;
 		par.sig = 1;
 		par.le = 1;
 		par.pchan = cdata.channels;
@@ -248,13 +257,14 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		 */
 		if (sio_getpar(out->handle.sio, &par) == 0)
 			fatal("sio_getpar");
-		if (par.bits != 8*cdata.bps || par.bps != cdata.bps
+		if (par.bits != cdata.bps || par.bps != cdata.bps/8
 		    || par.sig != 1 || par.le != 1
 		    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
 		    || par.rate < (995*cdata.rate)/1000
 		    || par.rate > (1005*cdata.rate)/1000) {
 			fatalx("setting sndio parameters failed");
 		}
+		sio_start(out->handle.sio);
 	}
 
 	while (1) {
@@ -269,12 +279,18 @@ play_flac(struct input *in, struct out *out, struct state *state)
 			}
 			if (FLAC__stream_decoder_get_state(dec)
 			    == FLAC__STREAM_DECODER_END_OF_STREAM) {
-				/* Check if we need a padding byte. */
+				/* Check if we need a padding byte for WAVE. */
 				if (out->type == OUT_WAV_FILE
 				    && cdata.bytes_written % 2 != 0
 				    && fwrite("\0", 1, 1, out->handle.fp) < 1)
 					return (-1);
-				fclose(out->handle.fp);
+			    	if (out->type == OUT_SNDIO) {
+					sio_close(out->handle.sio);
+				}
+				else {
+					fclose(out->handle.fp);
+				}
+				cleanup_flac_decoder(dec);
 				msg(MSG_DONE, NULL, 0);
 				return(0);
 			}
