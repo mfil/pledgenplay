@@ -179,7 +179,7 @@ START_TEST (decode_converts_flac_to_raw)
 	struct out	out;
 	FILE		*outfp;
 	pid_t		child_pid;
-	int		rv, cmp, sv[2], out_fd;
+	int		rv, cmp, sv[2];
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
@@ -225,7 +225,7 @@ START_TEST (decode_converts_flac_to_wav)
 	struct out	out;
 	FILE		*outfp;
 	pid_t		child_pid;
-	int		rv, cmp, sv[2], out_fd;
+	int		rv, cmp, sv[2];
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
