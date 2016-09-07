@@ -206,7 +206,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		par.rate = cdata.rate;
 		par.xrun = SIO_IGNORE;
 		if (sio_setpar(out->handle.sio, &par) == 0)
-			fatal("sio_setpar");
+			fatalx("sio_setpar: failed");
 		/*
 		 * Now check if the parameters were set correctly.
 		 * According to sio_open(3), a difference of 0.5% in the rate
@@ -219,7 +219,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
 		    || par.rate < (995*cdata.rate)/1000
 		    || par.rate > (1005*cdata.rate)/1000) {
-			fatal("setting sndio parameters failed");
+			fatalx("setting sndio parameters failed");
 		}
 	}
 
