@@ -19,14 +19,6 @@
 
 #include <stdio.h>
 
-union handle {
-	FILE		*fp;
-	struct sio_hdl	*sio;
-};
-struct out {
-	int		type;
-	union handle	handle;
-};
 struct input {
 	int	fd;
 	int	fmt;

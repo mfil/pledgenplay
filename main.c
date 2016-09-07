@@ -32,7 +32,10 @@ extern char	*__progname;
 int
 main(int argc, char **argv)
 {
-	int		opt, out_fd, decflag = 0, rawflag = 0, sv[2];
+	struct out	out;
+
+	int		opt, decflag = 0, rawflag = 0, sv[2];
+	FILE		*outfp;
 	pid_t		child_pid;
 	char		*ofile = NULL, *infile = NULL, *base = NULL,
 			*ext = NULL;
@@ -104,15 +107,17 @@ main(int argc, char **argv)
 			strlcat(ofile, rawflag ? ".raw" : ".wav", osize);
 		}
 	}
-	if ((out_fd = open(ofile, O_WRONLY|O_CREAT|O_TRUNC,
-	    S_IRUSR|S_IWUSR|S_IRGRP|S_IWGRP|S_IROTH|S_IWOTH)) == -1)
+	if ((outfp = fopen(ofile, "w")) == NULL)
 		err(1, "open");
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
 	child_pid = fork();
-	if (child_pid == 0)
-		child_main(sv, rawflag ? OUT_RAW : OUT_WAV_FILE, out_fd);
+	if (child_pid == 0) {
+		out.type = rawflag ? OUT_RAW : OUT_WAV_FILE;
+		out.handle.fp = outfp;
+		child_main(sv, &out);
+	}
 	else {
 		parent_init(sv, child_pid);
 		if (decode(argv[0]) != 0)

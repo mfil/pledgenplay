@@ -68,6 +68,7 @@ END_TEST
 START_TEST (get_meta_returns_NULL_when_no_file_open)
 {
 	struct meta	*mdata;
+	struct out	out;
 	int		sv[2];
 	pid_t		child_pid;
 
@@ -79,7 +80,9 @@ START_TEST (get_meta_returns_NULL_when_no_file_open)
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		child_main(sv, 0, -1);
+		out.type = OUT_RAW;
+		out.handle.fp = NULL;
+		child_main(sv, &out);
 	default:
 		/* Parent process */
 		parent_init(sv, child_pid);
@@ -92,6 +95,7 @@ END_TEST
 START_TEST (get_meta_handles_vorbis_comment_in_flac)
 {
 	struct meta	*mdata;
+	struct out	out;
 	pid_t		child_pid;
 	int		sv[2];
 
@@ -103,7 +107,9 @@ START_TEST (get_meta_handles_vorbis_comment_in_flac)
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		child_main(sv, 0, -1);
+		out.type = OUT_RAW;
+		out.handle.fp = NULL;
+		child_main(sv, &out);
 	default:
 		/* Parent process */
 		parent_init(sv, child_pid);
@@ -130,6 +136,7 @@ END_TEST
 START_TEST (get_meta_handles_id3v2_in_flac)
 {
 	struct meta	*mdata;
+	struct out	out;
 	pid_t		child_pid;
 	int		sv[2];
 
@@ -141,7 +148,9 @@ START_TEST (get_meta_handles_id3v2_in_flac)
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		child_main(sv, 0, -1);
+		out.type = OUT_RAW;
+		out.handle.fp = NULL;
+		child_main(sv, &out);
 	default:
 		/* Parent process */
 		parent_init(sv, child_pid);
@@ -167,22 +176,25 @@ END_TEST
 
 START_TEST (decode_converts_flac_to_raw)
 {
+	struct out	out;
+	FILE		*outfp;
 	pid_t		child_pid;
 	int		rv, cmp, sv[2], out_fd;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	out_fd = open("./scratchspace/test.raw", O_WRONLY|O_CREAT|O_TRUNC,
-	    S_IRUSR|S_IWUSR);
-	if (out_fd == -1)
-		err(1, "open");
+	outfp = fopen("./scratchspace/test.raw", "w");
+	if (outfp == NULL)
+		err(1, "fopen");
 	child_pid = fork();
 	switch (child_pid) {
 	case -1:
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		child_main(sv, OUT_RAW, out_fd);
+		out.type = OUT_RAW;
+		out.handle.fp = outfp;
+		child_main(sv, &out);
 	default:
 		/* Parent process */
 		parent_init(sv, child_pid);
@@ -210,28 +222,32 @@ END_TEST
 
 START_TEST (decode_converts_flac_to_wav)
 {
+	struct out	out;
+	FILE		*outfp;
 	pid_t		child_pid;
 	int		rv, cmp, sv[2], out_fd;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
-	out_fd = open("./scratchspace/test.wav", O_WRONLY|O_CREAT|O_TRUNC,
-	    S_IRUSR|S_IWUSR);
-	if (out_fd == -1)
-		err(1, "open");
+	outfp = fopen("./scratchspace/test.wav", "w");
+	if (outfp == NULL)
+		err(1, "fopen");
 	child_pid = fork();
 	switch (child_pid) {
 	case -1:
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		child_main(sv, OUT_WAV_FILE, out_fd);
+		out.type = OUT_WAV_FILE;
+		out.handle.fp = outfp;
+		child_main(sv, &out);
 	default:
 		/* Parent process */
 		parent_init(sv, child_pid);
 		rv = decode("./testdata/test.flac");
 		ck_assert_int_eq(rv, 0);
-		cmp = system("cmp ./testdata/test.wav ./scratchspace/test.wav 1>/dev/null");
+		cmp = system("cmp ./testdata/test.wav ./scratchspace/test.wav"
+		    " 1>/dev/null");
 		ck_assert_int_eq(cmp, 0);
 	}
 }

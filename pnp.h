@@ -28,6 +28,15 @@ enum {OK, INIT_FAIL, ERROR, CHILD_ERROR, SIGNAL};
 /* output types */
 enum {NONE, OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
 
+union handle {
+	FILE		*fp;
+	struct sio_hdl	*sio;
+};
+struct out {
+	int		type;
+	union handle	handle;
+};
+
 struct meta {
 	char		*artist;
 	char		*title;
@@ -37,7 +46,7 @@ struct meta {
 	char		*time;
 };
 
-int	child_main(int[2], int, int);
+int	child_main(int[2], struct out *);
 
 void		free_meta(struct meta *);
 int		decode(char *);

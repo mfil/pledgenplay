@@ -38,6 +38,7 @@ START_TEST (child_exits_on_CMD_EXIT)
 {
 	pid_t		child;
 	int		sv[2];
+	struct out	out;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
@@ -47,7 +48,9 @@ START_TEST (child_exits_on_CMD_EXIT)
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		if (child_main(sv, 0, -1) == -1)
+		out.type = OUT_RAW;
+		out.handle.fp = NULL;
+		if (child_main(sv, &out) == -1)
 			ck_abort_msg("child_main failed.");
 	default:
 		/* Parent process */
@@ -116,6 +119,7 @@ START_TEST (send_new_file_returns_0_on_valid_file)
 	pid_t		child;
 	int		sv[2], rv;
 	struct imsg	msg;
+	struct out	out;
 
 	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
 		err(1, "socketpair");
@@ -125,7 +129,9 @@ START_TEST (send_new_file_returns_0_on_valid_file)
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		rv = child_main(sv, 0, -1);
+		out.type = OUT_RAW;
+		out.handle.fp = NULL;
+		rv = child_main(sv, &out);
 		if (rv == -1)
 			ck_abort_msg("child_main failed.");
 	default:
@@ -141,6 +147,7 @@ END_TEST
 START_TEST (send_new_file_returns_1_on_invalid_file)
 {
 	struct imsg	msg;
+	struct out	out;
 	pid_t		child;
 	int		sv[2], rv;
 
@@ -152,7 +159,9 @@ START_TEST (send_new_file_returns_1_on_invalid_file)
 		err(1, "fork");
 	case 0:
 		/* Child process */
-		rv = child_main(sv, 0, -1);
+		out.type = OUT_RAW;
+		out.handle.fp = NULL;
+		rv = child_main(sv, &out);
 		if (rv == -1)
 			ck_abort_msg("child_main failed.");
 	default:
