@@ -7,6 +7,6 @@ files happens in a child process that is locked down using OpenBSD's
 
 Malicious audio files are probably not the thing you're most worried
 about. I'm writing this to get some practice with privilege separation
-and unit testing. Nevertheless, I hope to make this a functional music
-player some day. So far, it can decode the FLAC format to WAVE and raw
-audio data.
+and unit testing. Nevertheless, I hope to make this a (more or less)
+functional music player some day. So far, it can decode or play back
+a single file in the FLAC format.
