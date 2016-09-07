@@ -189,7 +189,7 @@ write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	while (bufp2 < bufp1) {
 		nwr = sio_write(cdata->out->handle.sio, bufp2, bufp1 - bufp2);
 		if (nwr == 0 && sio_eof(cdata->out->handle.sio)) {
-			dprintf(2, "sio error\n");
+			fatalx(2, "sndio error\n");
 			return (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
 		}
 		bufp2 += nwr;
