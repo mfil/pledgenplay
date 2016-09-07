@@ -259,6 +259,16 @@ decode(char *infile)
 	while (1) {
 		if (parent_process_events(&msg) > 0) {
 			switch (msg.hdr.type) {
+			case MSG_FATAL:
+				((char *)msg.data)[msg.hdr.len-1] = '\0';
+				dprintf(2, "pnp [child]: %s\n", msg.data);
+				while (check_child())
+					;
+				return (1);
+			case MSG_WARN:
+				((char *)msg.data)[msg.hdr.len-1] = '\0';
+				dprintf(2, "pnp [child]: %s\n", msg.data);
+				break;
 			case MSG_DONE:
 				imsg_free(&msg);
 				return (0);
