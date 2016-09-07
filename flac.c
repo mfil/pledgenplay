@@ -156,6 +156,40 @@ write_cb_file(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
 
+FLAC__StreamDecoderWriteStatus
+write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
+    const FLAC__int32 *const decoded_samples[], void *client_data)
+{
+	struct flac_client_data	*cdata;
+	FILE			*outfp;
+	unsigned int		channels, bsiz, bps, chan, samp;
+	char			*sample, *buf, *bufp1, *bufp2;
+	size_t			nwr;
+
+	cdata = (struct flac_client_data *)client_data;
+	outfp = cdata->out->handle.fp;
+	bsiz = frame->header.blocksize;
+	bps = frame->header.bits_per_sample/8;
+	channels = frame->header.channels;
+	buf = reallocarray(NULL, bps*channels, bsiz);
+	if (buf == NULL)
+		fatal("malloc");
+	bufp1 = bufp2 = buf;
+	for (samp = 0; samp < bsiz; samp++)
+		for (chan = 0; chan < channels; chan++) {
+			sample = (char *)(&decoded_samples[chan][samp]);
+			memcpy(bufp1, sample, bps);
+			bufp1 += bps;
+		}
+	while (bufp2 < bufp1) {
+		nwr = sio_write(cdata->out->handle.sio, buf, bufp1 - bufp2);
+		bufp2 += nwr;
+		process_events(cdata->in, cdata->state);
+	}
+	free(buf);
+	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
+}
+
 void
 err_cb(const FLAC__StreamDecoder *dec,
     const FLAC__StreamDecoderErrorStatus status, void *client_data)
