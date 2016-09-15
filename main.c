@@ -121,7 +121,7 @@ main(int argc, char **argv)
 	else { /* decflag == 0 */
 		if (name == NULL)
 			name = default_dev;
-		hdl = sio_open(name, SIO_PLAY, 0);
+		hdl = sio_open(name, SIO_PLAY, 1);
 		if (hdl == NULL)
 			errx(1, "sio_open: failed");
 		out.type = OUT_SNDIO;
