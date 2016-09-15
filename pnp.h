@@ -34,6 +34,7 @@ union handle {
 };
 struct out {
 	int		type;
+	int		ready; /* Only used for sndio */
 	union handle	handle;
 };
 
@@ -59,4 +60,5 @@ int		send_new_file(char *);
 void		parent_msg(int, char *, size_t);
 struct meta	*get_meta(void);
 void		stop_child(void);
+
 #endif

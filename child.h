@@ -19,6 +19,8 @@
 
 #include <stdio.h>
 
+#include "pnp.h"
+
 struct input {
 	int	fd;
 	int	fmt;
@@ -38,5 +40,5 @@ struct state {
 	int	task_start_play;
 };
 
-void process_events(struct input *, struct state *);
+void process_events(struct input *, struct out *, struct state *);
 #endif

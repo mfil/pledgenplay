@@ -89,7 +89,7 @@ read_cb(const FLAC__StreamDecoder *dec, FLAC__byte *buf, size_t *len,
 	size_t			bytes_left, size, r_pos, w_pos, to_read, to_end;
 
 	state->callback = 1;
-	process_events(in, state);
+	process_events(in, cdata->out, state);
 	state->callback = 0;
 
 	if (in->error)
@@ -166,13 +166,11 @@ write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
     const FLAC__int32 *const decoded_samples[], void *client_data)
 {
 	struct flac_client_data	*cdata;
-	FILE			*outfp;
 	unsigned int		channels, bsiz, bps, chan, samp;
 	char			*sample, *buf, *bufp1, *bufp2;
 	size_t			nwr;
 
 	cdata = (struct flac_client_data *)client_data;
-	outfp = cdata->out->handle.fp;
 	bsiz = frame->header.blocksize;
 	bps = frame->header.bits_per_sample/8;
 	channels = frame->header.channels;
@@ -186,15 +184,18 @@ write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 			memcpy(bufp1, sample, bps);
 			bufp1 += bps;
 		}
+	cdata->state->callback = 1;
 	while (bufp2 < bufp1) {
+		do {
+			process_events(cdata->in, cdata->out, cdata->state);
+		} while (!cdata->out->ready);
 		nwr = sio_write(cdata->out->handle.sio, bufp2, bufp1 - bufp2);
 		if (nwr == 0 && sio_eof(cdata->out->handle.sio)) {
 			fatalx("sndio error");
-			return (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
 		}
 		bufp2 += nwr;
-		process_events(cdata->in, cdata->state);
 	}
+	cdata->state->callback = 0;
 	free(buf);
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
@@ -244,9 +245,10 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		par.bits = cdata.bps;
 		par.bps = cdata.bps/8;
 		par.sig = 1;
-		par.le = 1;
+		par.le = SIO_LE_NATIVE;
 		par.pchan = cdata.channels;
 		par.rate = cdata.rate;
+		par.appbufsz = (cdata.rate * 200) / 1000; /* 200 ms buffer */
 		par.xrun = SIO_IGNORE;
 		if (sio_setpar(out->handle.sio, &par) == 0)
 			fatalx("sio_setpar: failed");
@@ -260,6 +262,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		if (par.bits != cdata.bps || par.bps != cdata.bps/8
 		    || par.sig != 1 || par.le != 1
 		    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
+		    || par.appbufsz != (cdata.rate * 200) / 1000
 		    || par.rate < (995*cdata.rate)/1000
 		    || par.rate > (1005*cdata.rate)/1000) {
 			fatalx("setting sndio parameters failed");
@@ -268,7 +271,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	}
 
 	while (1) {
-		process_events(in, state);
+		process_events(in, out, state);
 		switch (state->play) {
 		case (PLAYING):
 			if (FLAC__stream_decoder_process_single(dec) == false) {

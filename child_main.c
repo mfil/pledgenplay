@@ -26,6 +26,7 @@
 #include <errno.h>
 #include <imsg.h>
 #include <poll.h>
+#include <sndio.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -45,7 +46,8 @@ static void	new_file(int, struct input *);
 static int	extract_meta(struct input *);
 
 static struct imsgbuf	ibuf;
-static struct pollfd	pfd[2];
+static struct pollfd	*pfd;
+static nfds_t		nfds;
 struct input		*in;
 
 int
@@ -75,13 +77,20 @@ child_main(int sv[2], struct out *out)
 	in->eof = in->error = 0;
 
 	imsg_init(&ibuf, sv[1]);
+	nfds = 2 + (out->type == OUT_SNDIO ? sio_nfds(out->handle.sio) : 0);
+	if ((pfd = calloc(nfds, sizeof(struct pollfd))) == NULL)
+		_err("calloc");
 	pfd[0].fd = sv[1];
 	pfd[0].events = POLLIN|POLLOUT;
 	pfd[1].fd = -1;
 	pfd[1].events = POLLIN;
+	if (out->type == OUT_SNDIO) {
+		if (sio_pollfd(out->handle.sio, pfd+2, POLLOUT) == 0)
+			_err("sio_pollfd");
+	}
 
 	while (1) {
-		process_events(in, &state);
+		process_events(in, out, &state);
 		if (state.task_start_play) {
 			state.task_start_play = 0;
 			switch (in->fmt) {
@@ -96,17 +105,23 @@ child_main(int sv[2], struct out *out)
 }
 
 void
-process_events(struct input *in, struct state *state)
+process_events(struct input *in, struct out *out, struct state *state)
 {
 	int		nready;
+	int		sio_ev;
 
+	out->ready = 0;
 	if (!state->callback && state->task_new_file) {
 		new_file(state->new_fd, in);
 		state->task_new_file = 0;
 		state->play = STOPPED;
 	}
 
-	nready = poll(pfd, 2, 0);
+	if (out->type == OUT_SNDIO) {
+		if (sio_pollfd(out->handle.sio, pfd+2, POLLOUT) == 0)
+			fatalx("sio_pollfd: failed");
+	}
+	nready = poll(pfd, nfds, 0);
 	if (nready == -1) {
 		_err("poll");
 	}
@@ -117,6 +132,13 @@ process_events(struct input *in, struct state *state)
 			_err("imsg_flush");
 	if (in->fd == pfd[1].fd && (pfd[1].revents & (POLLIN|POLLHUP))) {
 		fill_inbuf(in);
+	}
+	if (state->play == PLAYING && out->type == OUT_SNDIO) {
+		sio_ev = sio_revents(out->handle.sio, pfd+2);
+		if (sio_ev & POLLHUP)
+			fatalx("sndio device gone");
+		if (sio_ev & POLLOUT)
+			out->ready = 1;
 	}
 	/*
 	 * Update pfd[1].fd in case a new input file was supplied
