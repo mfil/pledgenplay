@@ -17,7 +17,6 @@
 #include <fcntl.h>
 #include <sndio.h>
 #include <stdint.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -30,6 +29,7 @@
 #include "child.h"
 #include "file.h"
 #include "flac.h"
+#include "out_sndio.h"
 #include "pnp.h"
 
 static FLAC__StreamDecoder	*init_flac_decoder(struct flac_client_data *);
@@ -132,6 +132,13 @@ mdata_cb(const FLAC__StreamDecoder *dec, const FLAC__StreamMetadata *mdata,
 		cd->rate = mdata->data.stream_info.sample_rate;
 		cd->channels = mdata->data.stream_info.channels;
 		cd->bps = mdata->data.stream_info.bits_per_sample;
+		cd->max_bsize = mdata->data.stream_info.max_blocksize;
+		if (cd->max_bsize == 0)
+			/*
+			 * Maximal blocksize unknown. Use the maximal size
+			 * allowed by the standard.
+			 */
+			cd->max_bsize = 1 << 16;
 	}
 }
 
@@ -142,7 +149,7 @@ write_cb_file(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	struct flac_client_data	*cdata;
 	FILE			*outfp;
 	unsigned int		channels, bsiz, bps, chan, samp;
-	char			*sample;
+	const FLAC__int32	*sample;
 
 	cdata = (struct flac_client_data *)client_data;
 	outfp = cdata->out->handle.fp;
@@ -151,7 +158,7 @@ write_cb_file(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 	channels = frame->header.channels;
 	for (samp = 0; samp < bsiz; samp++)
 		for (chan = 0; chan < channels; chan++) {
-			sample = (char *)(&decoded_samples[chan][samp]);
+			sample = &decoded_samples[chan][samp];
 			if (fwrite(sample, bps, 1, outfp) < 1) {
 				return
 				    (FLAC__STREAM_DECODER_WRITE_STATUS_ABORT);
@@ -166,37 +173,17 @@ write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
     const FLAC__int32 *const decoded_samples[], void *client_data)
 {
 	struct flac_client_data	*cdata;
-	unsigned int		channels, bsiz, bps, chan, samp;
-	char			*sample, *buf, *bufp1, *bufp2;
-	size_t			nwr;
+	size_t			nput;
 
 	cdata = (struct flac_client_data *)client_data;
-	bsiz = frame->header.blocksize;
-	bps = frame->header.bits_per_sample/8;
-	channels = frame->header.channels;
-	buf = reallocarray(NULL, bps*channels, bsiz);
-	if (buf == NULL)
-		fatal("malloc");
-	bufp1 = bufp2 = buf;
-	for (samp = 0; samp < bsiz; samp++)
-		for (chan = 0; chan < channels; chan++) {
-			sample = (char *)(&decoded_samples[chan][samp]);
-			memcpy(bufp1, sample, bps);
-			bufp1 += bps;
-		}
-	cdata->state->callback = 1;
-	while (bufp2 < bufp1) {
-		do {
-			process_events(cdata->in, cdata->out, cdata->state);
-		} while (!cdata->out->ready);
-		nwr = sio_write(cdata->out->handle.sio, bufp2, bufp1 - bufp2);
-		if (nwr == 0 && sio_eof(cdata->out->handle.sio)) {
-			fatalx("sndio error");
-		}
-		bufp2 += nwr;
-	}
-	cdata->state->callback = 0;
-	free(buf);
+	if (frame->header.bits_per_sample != cdata->bps)
+		fatalx("FLAC files with variable bps are not supported.");
+	if (frame->header.channels != cdata->channels)
+		fatalx("FLAC files with a variable number of channels are"
+		    " not supported.");
+	nput = sbuf_put(cdata->sbuf, decoded_samples, frame->header.blocksize);
+	if (nput < frame->header.blocksize)
+		fatalx("Sample buffer full.");
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
 
@@ -217,6 +204,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	struct flac_client_data		cdata;
 	struct sio_par			par;
 	FLAC__StreamDecoder		*dec;
+	int				decode_done = 0;
 
 	state->play = PLAYING;
 	state->callback = 0;
@@ -225,6 +213,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	cdata.out = out;
 	cdata.error = 0;
 	cdata.bytes_written = 0;
+	cdata.sbuf = NULL;
 	if ((dec = init_flac_decoder(&cdata)) == NULL)
 		return (-1);
 	if (FLAC__stream_decoder_process_until_end_of_metadata(dec) == false) {
@@ -233,76 +222,122 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		cleanup_flac_decoder(dec);
 		return (-1);
 	}
-	if (out->type == OUT_WAV_FILE) {
-		if (cdata.samples > UINT32_MAX)
-			return (-1);
-		cdata.bytes_written += write_wav_header(out->handle.fp,
-		    cdata.channels, cdata.rate, cdata.bps, cdata.samples);
-	}
-	else if (out->type == OUT_SNDIO) {
-		/* Configure the playback device. */
-		sio_initpar(&par);
-		par.bits = cdata.bps;
-		par.bps = cdata.bps/8;
-		par.sig = 1;
-		par.le = SIO_LE_NATIVE;
-		par.pchan = cdata.channels;
-		par.rate = cdata.rate;
-		par.appbufsz = (cdata.rate * 200) / 1000; /* 200 ms buffer */
-		par.xrun = SIO_IGNORE;
-		if (sio_setpar(out->handle.sio, &par) == 0)
-			fatalx("sio_setpar: failed");
-		/*
-		 * Now check if the parameters were set correctly.
-		 * According to sio_open(3), a difference of 0.5% in the rate
-		 * should be negligible.
-		 */
-		if (sio_getpar(out->handle.sio, &par) == 0)
-			fatal("sio_getpar");
-		if (par.bits != cdata.bps || par.bps != cdata.bps/8
-		    || par.sig != 1 || par.le != 1
-		    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
-		    || par.appbufsz != (cdata.rate * 200) / 1000
-		    || par.rate < (995*cdata.rate)/1000
-		    || par.rate > (1005*cdata.rate)/1000) {
-			fatalx("setting sndio parameters failed");
+	/* If the output is to a file, we just decode in one go. */
+	if (out->type == OUT_WAV_FILE || out->type == OUT_RAW) {
+		if (out->type == OUT_WAV_FILE) {
+			if (cdata.samples > UINT32_MAX)
+				return (-1);
+			cdata.bytes_written += write_wav_header(out->handle.fp,
+			    cdata.channels, cdata.rate, cdata.bps,
+			    cdata.samples);
 		}
-		sio_start(out->handle.sio);
+		if (FLAC__stream_decoder_process_until_end_of_stream(dec)
+		    == false) {
+			if (cdata.error)
+				flac_error_msg(cdata.error_status);
+			cleanup_flac_decoder(dec);
+			return (-1);
+		}
+		if (out->type == OUT_WAV_FILE) {
+			/* Check if we need a padding byte for WAVE. */
+			if (out->type == OUT_WAV_FILE
+			    && cdata.bytes_written % 2 != 0
+			    && fwrite("\0", 1, 1, out->handle.fp) < 1)
+				return (-1);
+		}
+		if (fclose(out->handle.fp))
+			msgwarn("fclose");
+		cleanup_flac_decoder(dec);
+		msg(MSG_DONE, NULL, 0);
+		return (0);
 	}
+
+	/* We decode to a sndio device. First, it needs to be configured. */
+	sio_initpar(&par);
+	par.bits = cdata.bps;
+	par.bps = SIO_BPS(cdata.bps);
+	par.sig = 1;
+	par.le = SIO_LE_NATIVE;
+	par.pchan = cdata.channels;
+	par.rate = cdata.rate;
+	par.appbufsz = (cdata.rate * 200) / 1000; /* 200 ms buffer */
+	par.xrun = SIO_IGNORE;
+	if (sio_setpar(out->handle.sio, &par) == 0)
+		fatalx("sio_setpar: failed");
+	/*
+	 * Now check if the parameters were set correctly.
+	 * According to sio_open(3), a difference of 0.5% in the rate
+	 * should be negligible.
+	 */
+	if (sio_getpar(out->handle.sio, &par) == 0)
+		fatal("sio_getpar");
+	if (par.bits != cdata.bps || par.bps != cdata.bps/8
+	    || par.sig != 1 || par.le != 1
+	    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
+	    || par.appbufsz != (cdata.rate * 200) / 1000
+	    || par.rate < (995*cdata.rate)/1000
+	    || par.rate > (1005*cdata.rate)/1000) {
+		fatalx("setting sndio parameters failed");
+	}
+	/* Prepare the buffer for the samples. */
+	size_t	sbuf_size;
+	if (par.appbufsz > cdata.max_bsize)
+		sbuf_size = 3*par.appbufsz;
+	else
+		sbuf_size = 3*cdata.max_bsize;
+	/*
+	 * Audio devices process frames not one by one, but in blocks.
+	 * This blocksize is stored in par.round. According to www.sndio.org,
+	 * rounding sbuf_size to a multiple of par.round is optimal.
+	 */
+	sbuf_size += par.round - 1;
+	sbuf_size = sbuf_size - (sbuf_size % par.round);
+	cdata.sbuf = sbuf_new(cdata.bps/8, cdata.channels, sbuf_size);
+	if (cdata.sbuf == NULL)
+		fatal("calloc");
+	if (sio_start(out->handle.sio) == 0)
+		fatalx("sio_start: failed\n");
 
 	while (1) {
 		process_events(in, out, state);
 		switch (state->play) {
 		case (PLAYING):
-			if (FLAC__stream_decoder_process_single(dec) == false) {
-				if (cdata.error)
-					flac_error_msg(cdata.error_status);
+			/* sndio output */
+			if (out->type == OUT_SNDIO && out->ready &&
+			    sbuf_sio_write(cdata.sbuf, out->handle.sio)) {
+				fatalx("sio_write: failed");
+			}
+			if (decode_done
+			    && cdata.sbuf->free == cdata.sbuf->size) {
+				sio_stop(out->handle.sio);
 				cleanup_flac_decoder(dec);
-				return (-1);
+				msg(MSG_DONE, NULL, 0);
+				return (0);
+			}
+			/* Fallthrough */
+		case (PAUSED):
+			/*
+			 * If there's space available, decode another block and
+			 * put it in the buffer.
+			 */
+			if (!decode_done
+			    && cdata.sbuf->free >= cdata.max_bsize) {
+				if (FLAC__stream_decoder_process_single(dec)
+				    == false) {
+					if (cdata.error)
+						flac_error_msg(cdata.error_status);
+					cleanup_flac_decoder(dec);
+					return (-1);
+				}
 			}
 			if (FLAC__stream_decoder_get_state(dec)
 			    == FLAC__STREAM_DECODER_END_OF_STREAM) {
-				/* Check if we need a padding byte for WAVE. */
-				if (out->type == OUT_WAV_FILE
-				    && cdata.bytes_written % 2 != 0
-				    && fwrite("\0", 1, 1, out->handle.fp) < 1)
-					return (-1);
-			    	if (out->type == OUT_SNDIO) {
-					sio_close(out->handle.sio);
-				}
-				else {
-					fclose(out->handle.fp);
-				}
-				cleanup_flac_decoder(dec);
-				msg(MSG_DONE, NULL, 0);
-				return(0);
+				decode_done = 1;
 			}
 			break;
 		case (STOPPED):
 			cleanup_flac_decoder(dec);
 			return (0);
-		case (PAUSED):
-			break;
 		default:
 			fatal("unknown state");
 		}
