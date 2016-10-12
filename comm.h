@@ -22,6 +22,7 @@ enum	{NEW_FILE,	/* Send file descriptor to child */
 	 CMD_EXIT,	/* Tell child to exit */
 	 CMD_META,	/* Tell child to extract metadata */
 	 CMD_PLAY,	/* Tell child to start playback */
+	 CMD_PAUSE,	/* Tell child to pause playback */
 	 MSG_ACK_FILE,	/* Acknowledge new file */
 	 MSG_FILE_ERR,	/* Error reading file or malformed file */
 	 MSG_DONE,	/* Playback/decoding finished */

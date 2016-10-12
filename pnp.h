@@ -23,8 +23,6 @@
 #include <imsg.h>
 #include <poll.h>
 
-/* parent_main return values */
-enum {OK, INIT_FAIL, ERROR, CHILD_ERROR, SIGNAL};
 /* output types */
 enum {NONE, OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
 
@@ -52,6 +50,9 @@ int	child_main(int[2], struct out *);
 void		free_meta(struct meta *);
 int		decode(char *);
 void		parent_init(int[2], pid_t);
+int		start_play(char *);
+int		pause_play(void);
+int		resume_play(void);
 void		child_warn(char *, size_t);
 int 		check_child(void);
 __dead void	parent_err(const char *);

@@ -301,6 +301,12 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	while (1) {
 		process_events(in, out, state);
 		switch (state->play) {
+		case (RESUME):
+			state->play = PLAYING;
+			if (out->type == OUT_SNDIO &&
+			    sio_start(out->handle.sio) == 0)
+				fatalx("sio_start: failed\n");
+			/* Fallthrough */
 		case (PLAYING):
 			/* sndio output */
 			if (out->type == OUT_SNDIO && out->ready &&
@@ -314,12 +320,6 @@ play_flac(struct input *in, struct out *out, struct state *state)
 				msg(MSG_DONE, NULL, 0);
 				return (0);
 			}
-			/* Fallthrough */
-		case (PAUSED):
-			/*
-			 * If there's space available, decode another block and
-			 * put it in the buffer.
-			 */
 			if (!decode_done
 			    && cdata.sbuf->free >= cdata.max_bsize) {
 				if (FLAC__stream_decoder_process_single(dec)
@@ -335,7 +335,22 @@ play_flac(struct input *in, struct out *out, struct state *state)
 				decode_done = 1;
 			}
 			break;
+		case (PAUSING):
+			/*
+			 * If there's space available, decode another block and
+			 * put it in the buffer.
+			 */
+			if (out->type == OUT_SNDIO &&
+			    sio_stop(out->handle.sio) == 0)
+				fatalx("sio_stop: failed\n");
+			state->play = PAUSED;
+			/* Fallthrough */
+		case (PAUSED):
+			break;
 		case (STOPPED):
+			if (out->type == OUT_SNDIO &&
+			    sio_stop(out->handle.sio) == 0)
+				fatalx("sio_stop: failed\n");
 			cleanup_flac_decoder(dec);
 			return (0);
 		default:

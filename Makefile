@@ -5,7 +5,7 @@ CFLAGS=-g -std=$(STD) -pedantic -Wall $(IDIRS) $(LDIRS)
 STD=c99
 IDIRS=-I/usr/local/include
 LDIRS=-L/usr/local/lib
-LIBS=-lutil -lsndio -liconv -lFLAC
+LIBS=-lutil -lsndio -liconv -lncurses -lFLAC
 TESTDIR=test
 DEPENDS=pnp.h comm.h child.h flac.h out_sndio.h
 

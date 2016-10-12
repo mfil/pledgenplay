@@ -16,10 +16,16 @@
 
 #include <sys/socket.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/queue.h>
+#include <sys/uio.h>
 
+#include <curses.h>
 #include <err.h>
 #include <fcntl.h>
+#include <imsg.h>
 #include <libgen.h>
+#include <poll.h>
 #include <sndio.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -136,8 +142,34 @@ main(int argc, char **argv)
 	}
 	else {
 		parent_init(sv, child_pid);
-		if (decode(argv[0]) != 0)
+		if (decflag && decode(argv[0]) != 0)
 			errx(1, "decode");
+		else {
+			struct pollfd	pfd;
+			int		nready, paused = 0;
+
+			pfd.fd = 1;
+			pfd.events = POLLIN;
+			if (start_play(argv[0]) != 0) 
+				errx(1, "start_play");
+			initscr();
+			cbreak();
+			noecho();
+			while (1) {
+				if ((nready = poll(&pfd, 1, 1)) < 0)
+					parent_err("poll");
+				if (nready == 1 && pfd.revents & POLLIN &&
+				    getchar() == ' ') {
+					if (paused) {
+						paused = 0;
+						resume_play();
+					} else {
+						paused = 1;
+						pause_play();
+					}
+				}
+			}
+		}
 		stop_child();
 	}
 	return (0);

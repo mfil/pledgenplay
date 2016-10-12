@@ -278,6 +278,80 @@ decode(char *infile)
 	}
 }
 
+int
+start_play(char *infile)
+{
+	struct imsg	msg;
+
+	if (send_new_file(infile))
+		return (1);
+	parent_msg((u_int32_t)CMD_PLAY, NULL, 0);
+	if (parent_process_events(&msg) > 0) {
+		switch (msg.hdr.type) {
+		case MSG_FATAL:
+			((char *)msg.data)[msg.hdr.len-1] = '\0';
+			dprintf(2, "pnp [child]: %s\n", msg.data);
+			while (check_child())
+				;
+			return (1);
+		case MSG_WARN:
+			((char *)msg.data)[msg.hdr.len-1] = '\0';
+			dprintf(2, "pnp [child]: %s\n", msg.data);
+			break;
+		}
+		imsg_free(&msg);
+	}
+	return (0);
+}
+
+int
+pause_play(void)
+{
+	struct imsg	msg;
+
+	parent_msg((u_int32_t)CMD_PAUSE, NULL, 0);
+	if (parent_process_events(&msg) > 0) {
+		switch (msg.hdr.type) {
+		case MSG_FATAL:
+			((char *)msg.data)[msg.hdr.len-1] = '\0';
+			dprintf(2, "pnp [child]: %s\n", msg.data);
+			while (check_child())
+				;
+			return (1);
+		case MSG_WARN:
+			((char *)msg.data)[msg.hdr.len-1] = '\0';
+			dprintf(2, "pnp [child]: %s\n", msg.data);
+			break;
+		}
+		imsg_free(&msg);
+	}
+	return (0);
+}
+
+int
+resume_play(void)
+{
+	struct imsg	msg;
+
+	parent_msg((u_int32_t)CMD_PLAY, NULL, 0);
+	if (parent_process_events(&msg) > 0) {
+		switch (msg.hdr.type) {
+		case MSG_FATAL:
+			((char *)msg.data)[msg.hdr.len-1] = '\0';
+			dprintf(2, "pnp [child]: %s\n", msg.data);
+			while (check_child())
+				;
+			return (1);
+		case MSG_WARN:
+			((char *)msg.data)[msg.hdr.len-1] = '\0';
+			dprintf(2, "pnp [child]: %s\n", msg.data);
+			break;
+		}
+		imsg_free(&msg);
+	}
+	return (0);
+}
+
 void
 free_meta(struct meta *mdata)
 {

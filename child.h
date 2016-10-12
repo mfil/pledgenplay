@@ -30,7 +30,7 @@ struct input {
 };
 
 /* State for the event handler and player functions. */
-enum {STOPPED, PLAYING, PAUSED};
+enum {STOPPED, PLAYING, PAUSING, PAUSED, RESUME};
 struct state {
 	int	play;     /* = STOPPED, PLAYING, or PAUSED */
 	int	callback; /* Set to 1 if we are in a callback. */

@@ -176,8 +176,15 @@ process_parent_msg(struct state *state, struct input *in)
 		case (CMD_PLAY):
 			if (in->fd == -1)
 				file_errx(in, "No input file");
+			else if (state->play == PAUSED)
+				state->play = RESUME;
+			else if (state->play == PAUSING)
+				state->play = PLAYING;
 			else
 				state->task_start_play = 1;
+			break;
+		case (CMD_PAUSE):
+			state->play = PAUSING;
 			break;
 		case (CMD_EXIT):
 			_exit(0);
