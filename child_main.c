@@ -169,7 +169,7 @@ process_parent_msg(struct state *state, struct input *in)
 			break;
 		case (CMD_META):
 			if (in->fd == -1)
-				file_errx(in, "No input file");
+				msgstr(MSG_NACK, "No input file");
 			else
 				extract_meta(in);
 			break;
@@ -254,10 +254,15 @@ new_file(int fd, struct input *in)
 	/* Determine the file format. */
 	if ((in->fmt = filetype(in->fd)) == -1)
 		file_err(in, "read");
-	else if (in->fmt == UNKNOWN)
-		file_errx(in, "unsupported file format");
+	else if (in->fmt == UNKNOWN) {
+		msg(MSG_NACK, NULL, 0);
+		if (in->fd != -1 && close(in->fd) != 0)
+			msgwarn("close");
+		in->fd = -1;
+		in->fmt = UNKNOWN;
+	}
 	else
-		msg(MSG_ACK_FILE, NULL, 0);
+		msg(MSG_ACK, NULL, 0);
 }
 
 static int
@@ -274,7 +279,7 @@ extract_meta(struct input *in)
 	}
 	if (rv == -1)
 		return (-1);
-	msg(META_END, NULL, 0);
+	msg(MSG_DONE, NULL, 0);
 	return (rv);
 }
 

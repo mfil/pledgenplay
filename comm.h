@@ -23,8 +23,9 @@ enum	{NEW_FILE,	/* Send file descriptor to child */
 	 CMD_META,	/* Tell child to extract metadata */
 	 CMD_PLAY,	/* Tell child to start playback */
 	 CMD_PAUSE,	/* Tell child to pause playback */
-	 MSG_ACK_FILE,	/* Acknowledge new file */
-	 MSG_FILE_ERR,	/* Error reading file or malformed file */
+	 MSG_ACK,	/* Acknowledge */
+	 MSG_NACK,
+	 MSG_FILE_ERR,	/* Error reading file */
 	 MSG_DONE,	/* Playback/decoding finished */
 	 MSG_WARN,	/* Warning */
 	 MSG_FATAL,	/* Fatal error; child process exits */
@@ -33,8 +34,7 @@ enum	{NEW_FILE,	/* Send file descriptor to child */
 	 META_ALBUM,
 	 META_TRACKNO,
 	 META_DATE,
-	 META_TIME,
-	 META_END};	/* End of metadata */
+	 META_TIME};
 
 void		msg(int, void *, size_t);
 void		msgstr(int, char *);

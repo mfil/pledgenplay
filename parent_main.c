@@ -37,11 +37,13 @@
 
 static void	 	signal_handler(int);
 static void		check_signal(void);
+static void		print_err(int, char *);
 
 static struct imsgbuf	ibuf;
 static struct pollfd	pfd;
 static int		term_sig, caught_sigchld;
 static pid_t		child_pid;
+static void		(*err_cb)(int, char *) = print_err;
 
 extern char		*__progname;
 
@@ -64,6 +66,31 @@ parent_init(int sv[2], pid_t child)
 }
 
 void
+set_err_cb(void (*f)(int, char *))
+{
+	err_cb = f;
+}
+
+static void
+print_err(int type, char *msg)
+{
+	if (type == PNP_CHILD_WARN)
+		dprintf(2, "pnp [child]: warning: %s\n", msg);
+	else if (type == PNP_CHILD_FATAL) {
+		dprintf(2, "pnp [child]: %s\n", msg);
+		exit(1);
+	}
+	else if (type == PNP_CHILD_FILE_ERR)
+		dprintf(2, "pnp [child]: %s\n", msg);
+	else if (type == PNP_PARENT_WARN)
+		dprintf(2, "pnp [parent]: %s\n", msg);
+	else if (type == PNP_PARENT_ERR) {
+		dprintf(2, "pnp [parent]: %s\n", msg);
+		exit(1);
+	}
+}
+
+void
 parent_msg(int type, char *data, size_t datalen)
 {
 	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, data, datalen)
@@ -83,7 +110,8 @@ parent_msg(int type, char *data, size_t datalen)
 ssize_t
 parent_process_events(struct imsg *msg)
 {
-	int		nready;
+	int		nready, err_type;
+	char		*err_msg;
 	ssize_t		rv = 0;
 
 	check_signal();
@@ -92,6 +120,32 @@ parent_process_events(struct imsg *msg)
 		parent_err("poll");
 	if ((rv = imsg_get(&ibuf, msg)) == -1)
 		parent_err("imsg_get");
+	if (rv > 0) {
+		switch (msg->hdr.type) {
+		case (MSG_WARN):
+			err_type = PNP_CHILD_WARN;
+			break;
+		case (MSG_FATAL):
+			/* Check if the child really exited. */
+			if (check_child())
+				parent_err("Child sent fatal error, but is "
+				    "still running.");
+			err_type = PNP_CHILD_FATAL;
+			break;
+		case (MSG_FILE_ERR):
+			err_type = PNP_CHILD_FILE_ERR;
+			break;
+		default:
+			err_type = -1;
+		}
+		if (err_type != -1) {
+			err_msg = (char *)msg->data;
+			err_msg[msg->hdr.len - 1] = '\0';
+			err_cb(err_type, err_msg);
+			rv = -1;
+			imsg_free(msg);
+		}
+	}
 	if (pfd.revents & (POLLIN|POLLHUP)) {
 		if (imsg_read(&ibuf) == -1 && errno != EAGAIN)
 			parent_err("imsg_read");
@@ -114,7 +168,7 @@ check_signal(void) {
 
 	if (caught_sigchld) {
 		if (check_child())
-			warnx("spurious SIGCHILD caught");
+			err_cb(PNP_PARENT_WARN, "spurious SIGCHILD caught");
 		else
 			exit(1);
 	}
@@ -189,13 +243,9 @@ struct meta
 			case (META_TIME):
 				field = &mdata->time;
 				break;
-			case (MSG_WARN):
-				len = msg.hdr.len - IMSG_HEADER_SIZE;
-				child_warn(msg.data, len);
-				break;
-			case (META_END):
+			case (MSG_DONE):
 				goto done;
-			case (MSG_FILE_ERR):
+			case (MSG_NACK):
 				goto fail;
 			}
 			if (field != NULL && msg.data != NULL) {
@@ -231,10 +281,10 @@ send_new_file(char *infile)
 	while (1) {
 		if (parent_process_events(&msg) > 0) {
 			switch (msg.hdr.type) {
-			case (MSG_ACK_FILE):
+			case (MSG_ACK):
 				rv = 0;
 				break;
-			case (MSG_FILE_ERR):
+			case (MSG_NACK):
 				rv = 1;
 				break;
 			default:
@@ -258,18 +308,7 @@ decode(char *infile)
 	parent_msg((u_int32_t)CMD_PLAY, NULL, 0);
 	while (1) {
 		if (parent_process_events(&msg) > 0) {
-			switch (msg.hdr.type) {
-			case MSG_FATAL:
-				((char *)msg.data)[msg.hdr.len-1] = '\0';
-				dprintf(2, "pnp [child]: %s\n", msg.data);
-				while (check_child())
-					;
-				return (1);
-			case MSG_WARN:
-				((char *)msg.data)[msg.hdr.len-1] = '\0';
-				dprintf(2, "pnp [child]: %s\n", msg.data);
-				break;
-			case MSG_DONE:
+			if (msg.hdr.type == MSG_DONE) {
 				imsg_free(&msg);
 				return (0);
 			}
@@ -287,18 +326,6 @@ start_play(char *infile)
 		return (1);
 	parent_msg((u_int32_t)CMD_PLAY, NULL, 0);
 	if (parent_process_events(&msg) > 0) {
-		switch (msg.hdr.type) {
-		case MSG_FATAL:
-			((char *)msg.data)[msg.hdr.len-1] = '\0';
-			dprintf(2, "pnp [child]: %s\n", msg.data);
-			while (check_child())
-				;
-			return (1);
-		case MSG_WARN:
-			((char *)msg.data)[msg.hdr.len-1] = '\0';
-			dprintf(2, "pnp [child]: %s\n", msg.data);
-			break;
-		}
 		imsg_free(&msg);
 	}
 	return (0);
@@ -311,18 +338,6 @@ pause_play(void)
 
 	parent_msg((u_int32_t)CMD_PAUSE, NULL, 0);
 	if (parent_process_events(&msg) > 0) {
-		switch (msg.hdr.type) {
-		case MSG_FATAL:
-			((char *)msg.data)[msg.hdr.len-1] = '\0';
-			dprintf(2, "pnp [child]: %s\n", msg.data);
-			while (check_child())
-				;
-			return (1);
-		case MSG_WARN:
-			((char *)msg.data)[msg.hdr.len-1] = '\0';
-			dprintf(2, "pnp [child]: %s\n", msg.data);
-			break;
-		}
 		imsg_free(&msg);
 	}
 	return (0);
@@ -335,18 +350,6 @@ resume_play(void)
 
 	parent_msg((u_int32_t)CMD_PLAY, NULL, 0);
 	if (parent_process_events(&msg) > 0) {
-		switch (msg.hdr.type) {
-		case MSG_FATAL:
-			((char *)msg.data)[msg.hdr.len-1] = '\0';
-			dprintf(2, "pnp [child]: %s\n", msg.data);
-			while (check_child())
-				;
-			return (1);
-		case MSG_WARN:
-			((char *)msg.data)[msg.hdr.len-1] = '\0';
-			dprintf(2, "pnp [child]: %s\n", msg.data);
-			break;
-		}
 		imsg_free(&msg);
 	}
 	return (0);
