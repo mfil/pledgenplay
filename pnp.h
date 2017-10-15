@@ -61,6 +61,7 @@ int 		check_child(void);
 __dead void	parent_err(const char *);
 ssize_t		parent_process_events(struct imsg *);
 int		send_new_file(char *);
+void		set_err_cb(void (*)(int, char *));
 void		parent_msg(int, char *, size_t);
 struct meta	*get_meta(void);
 void		stop_child(void);

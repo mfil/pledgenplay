@@ -405,7 +405,7 @@ fatalx(char *msg)
 	errmsg = strerror(errno);
 	msg_len = (u_int16_t)strlen(msg);
 	err_len = (u_int16_t)strlen(errmsg);
-	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, msg,
+	if (imsg_compose(&ibuf, (u_int32_t)MSG_FATAL, 0, getpid(), -1, msg,
 	    (u_int16_t)strlen(msg)+1) == -1)
 		_err("imsg");
 	if (imsg_flush(&ibuf) == -1)

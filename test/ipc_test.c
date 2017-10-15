@@ -174,16 +174,25 @@ START_TEST (send_new_file_returns_1_on_invalid_file)
 }
 END_TEST
 
+void
+test_err_cb(int type, char *msg)
+{
+	if (type == PNP_CHILD_FATAL) {
+		ck_assert(1 == 1);
+		exit(0);
+	}
+}
+
 Suite
 *ipc_suite(void)
 {
 	Suite *s;
-	TCase *tc_cmd;
-	TCase *tc_signals;
+	TCase *tc_cmd, *tc_signals, *tc_err;
 
 	s = suite_create("Interprocess Communication");
 	tc_cmd = tcase_create("Commands");
 	tc_signals = tcase_create("Signal handling");
+	tc_err = tcase_create("Error handling");
 
 	tcase_add_test(tc_cmd, child_exits_on_CMD_EXIT);
 	tcase_add_test(tc_cmd, send_new_file_returns_0_on_valid_file);
@@ -192,6 +201,7 @@ Suite
 	tcase_add_test(tc_signals, parent_ignores_false_SIGCHLD);
 	suite_add_tcase(s, tc_cmd);
 	suite_add_tcase(s, tc_signals);
+	suite_add_tcase(s, tc_err);
 	
 	return (s);
 }

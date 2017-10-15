@@ -164,13 +164,22 @@ parent_process_events(struct imsg *msg)
  */
 static void
 check_signal(void) {
-	int child_status;
+	int 		child_status;
+	struct imsg	imsg;
 
 	if (caught_sigchld) {
 		if (check_child())
 			err_cb(PNP_PARENT_WARN, "spurious SIGCHILD caught");
-		else
+		else {
+			/* See if we got an error message. */
+			if (imsg_read(&ibuf) == -1 && errno != EAGAIN)
+				parent_err("imsg_read");
+			if (imsg_get(&ibuf, &imsg) == -1)
+				parent_err("imsg_get");
+			if (imsg.hdr.type == MSG_FATAL)
+				err_cb(PNP_CHILD_FATAL, "fatal error");
 			exit(1);
+		}
 	}
 	if (term_sig) {
 		if (kill(child_pid, SIGTERM))
