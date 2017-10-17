@@ -34,18 +34,18 @@
 #include <unistd.h>
 
 #include "child.h"
+#include "child_errors.h"
+#include "child_messages.h"
 #include "comm.h"
 #include "file.h"
 #include "flac.h"
 #include "pnp.h"
 
-static void	process_parent_msg(struct state *, struct input *);
 static void	fill_inbuf(struct input *);
 static void	clear_inbuf(struct input *);
 static void	new_file(int, struct input *);
 static int	extract_meta(struct input *);
 
-static struct imsgbuf	ibuf;
 static struct pollfd	*pfd;
 static nfds_t		nfds;
 struct input		*in;
@@ -66,27 +66,27 @@ child_main(int sv[2], struct out *out)
 
 	in = malloc(sizeof(struct input));
 	if (in == NULL)
-		fatal("malloc");
+		child_fatal("malloc");
 	in->fd = -1;
 	in->fmt = UNKNOWN;
 	in->buf = malloc(INBUF_SIZE);
 	if (in->buf == NULL)
-		fatal("malloc");
+		child_fatal("malloc");
 	in->buf_size = in->buf_free = INBUF_SIZE;
 	in->read_pos = in->write_pos = 0;
 	in->eof = in->error = 0;
 
-	imsg_init(&ibuf, sv[1]);
+	initialize_ipc(sv[1]);
 	nfds = 2 + (out->type == OUT_SNDIO ? sio_nfds(out->handle.sio) : 0);
 	if ((pfd = calloc(nfds, sizeof(struct pollfd))) == NULL)
-		_err("calloc");
+		ipc_error("calloc");
 	pfd[0].fd = sv[1];
 	pfd[0].events = POLLIN|POLLOUT;
 	pfd[1].fd = -1;
 	pfd[1].events = POLLIN;
 	if (out->type == OUT_SNDIO) {
 		if (sio_pollfd(out->handle.sio, pfd+2, POLLOUT) == 0)
-			_err("sio_pollfd");
+			ipc_error("sio_pollfd");
 	}
 
 	while (1) {
@@ -98,7 +98,7 @@ child_main(int sv[2], struct out *out)
 				play_flac(in, out, &state);
 				break;
 			default:
-				msgwarnx("Not implemented.");
+				child_warnx("Not implemented.");
 			}
 		}
 	}
@@ -119,57 +119,36 @@ process_events(struct input *in, struct out *out, struct state *state)
 
 	if (out->type == OUT_SNDIO) {
 		if (sio_pollfd(out->handle.sio, pfd+2, POLLOUT) == 0)
-			fatalx("sio_pollfd: failed");
+			child_fatalx("sio_pollfd: failed");
 	}
 	nready = poll(pfd, nfds, 0);
 	if (nready == -1) {
-		_err("poll");
+		ipc_error("poll");
 	}
 	if (pfd[0].revents & (POLLIN|POLLHUP))
-		process_parent_msg(state, in);
+		receive_messages();
 	if (pfd[0].revents & POLLOUT)
-		if (imsg_flush(&ibuf) == -1)
-			_err("imsg_flush");
+		send_messages();
 	if (in->fd == pfd[1].fd && (pfd[1].revents & (POLLIN|POLLHUP))) {
 		fill_inbuf(in);
 	}
-	if (state->play == PLAYING && out->type == OUT_SNDIO) {
-		sio_ev = sio_revents(out->handle.sio, pfd+2);
-		if (sio_ev & POLLHUP)
-			fatalx("sndio device gone");
-		if (sio_ev & POLLOUT)
-			out->ready = 1;
-	}
-	/*
-	 * Update pfd[1].fd in case a new input file was supplied
-	 * or file_err() was called.
-	 */
-	pfd[1].fd = in->fd;
-}
 
-static void
-process_parent_msg(struct state *state, struct input *in)
-{
-	struct imsg	imsg;
-	ssize_t		nbytes;
-
-	if (imsg_read(&ibuf) == -1 && errno != EAGAIN)
-		_err("imsg_read");
-	while ((nbytes = imsg_get(&ibuf, &imsg)) > 0) {
-		switch ((int)imsg.hdr.type) {
+	struct message message;
+	while(get_next_message(&message)) {
+		switch (message.type) {
 		case (NEW_FILE):
 			if (state->callback) {
 				state->task_new_file = 1;
-				state->new_fd = imsg.fd;
+				state->new_fd = message.data.fd;
 			}
 			else {
-				new_file(imsg.fd, in);
+				new_file(message.data.fd, in);
 				state->play = STOPPED;
 			}
 			break;
 		case (CMD_META):
 			if (in->fd == -1)
-				msgstr(MSG_NACK, "No input file");
+				enqueue_message(MSG_NACK, "No input file");
 			else
 				extract_meta(in);
 			break;
@@ -188,9 +167,22 @@ process_parent_msg(struct state *state, struct input *in)
 			break;
 		case (CMD_EXIT):
 			_exit(0);
+		default:
+			child_fatalx("Unexpected or invalid message type.");
 		}
-		imsg_free(&imsg);
 	}
+	if (state->play == PLAYING && out->type == OUT_SNDIO) {
+		sio_ev = sio_revents(out->handle.sio, pfd+2);
+		if (sio_ev & POLLHUP)
+			child_fatalx("sndio device gone");
+		if (sio_ev & POLLOUT)
+			out->ready = 1;
+	}
+	/*
+	 * Update pfd[1].fd in case a new input file was supplied
+	 * or file_err() was called.
+	 */
+	pfd[1].fd = in->fd;
 }
 
 static void
@@ -244,7 +236,7 @@ new_file(int fd, struct input *in)
 	/* Close the old file (if there was one). */
 	if (in->fd != -1) {
 		if (close(in->fd) != 0)
-			msgwarn("close");
+			child_warn("close");
 		in->fd = -1;
 		in->fmt = UNKNOWN;
 		clear_inbuf(in);
@@ -255,14 +247,14 @@ new_file(int fd, struct input *in)
 	if ((in->fmt = filetype(in->fd)) == -1)
 		file_err(in, "read");
 	else if (in->fmt == UNKNOWN) {
-		msg(MSG_NACK, NULL, 0);
+		enqueue_message(MSG_NACK, "");
 		if (in->fd != -1 && close(in->fd) != 0)
-			msgwarn("close");
+			child_warn("close");
 		in->fd = -1;
 		in->fmt = UNKNOWN;
 	}
 	else
-		msg(MSG_ACK, NULL, 0);
+		enqueue_message(MSG_ACK, "");
 }
 
 static int
@@ -279,147 +271,6 @@ extract_meta(struct input *in)
 	}
 	if (rv == -1)
 		return (-1);
-	msg(MSG_DONE, NULL, 0);
+	enqueue_message(MSG_DONE, "");
 	return (rv);
-}
-
-/*
- * Compose a message to the parent. The message will be truncated if it exceeds
- * the maximum length for imsg_compose (64 kb).
- */
-void
-msg(int type, void *data, size_t len)
-{
-	if (len > UINT16_MAX)
-		len = UINT16_MAX;
-	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, data,
-	    (u_int16_t)len) == -1)
-		_err("imsg");
-}
-
-/* Send msg to the parent; msg must be null-terminated. */
-void
-msgstr(int type, char *msg)
-{
-	if (imsg_compose(&ibuf, (u_int32_t)type, 0, getpid(), -1, msg,
-	    (u_int16_t)strlen(msg)+1) == -1)
-		_err("imsg");
-}
-
-void
-msgwarn(char *msg)
-{
-	struct ibuf	*buf;
-	char		*errmsg;
-	u_int16_t	msg_len, err_len;
-
-	errmsg = strerror(errno);
-	msg_len = (u_int16_t)strlen(msg);
-	err_len = (u_int16_t)strlen(errmsg);
-	buf = imsg_create(&ibuf, (u_int32_t)MSG_WARN, 0, getpid(),
-	    msg_len + err_len + 3);
-	if (buf == NULL)
-		_err("imsg");
-	if (imsg_add(buf, msg, msg_len) == -1 ||
-	    imsg_add(buf, ": ", 2) == -1 ||
-	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
-		_err("imsg");
-	imsg_close(&ibuf, buf);
-}
-
-void
-msgwarnx(char *msg)
-{
-	if (imsg_compose(&ibuf, (u_int32_t)MSG_WARN, 0, getpid(), -1, msg,
-	    strlen(msg)+1) == -1)
-	    	_err("imsg");
-}
-
-void
-file_err(struct input *in, char *msg)
-{
-	struct ibuf	*buf;
-	char		*errmsg;
-	u_int16_t	msg_len, err_len;
-
-	errmsg = strerror(errno);
-	msg_len = (u_int16_t)strlen(msg);
-	err_len = (u_int16_t)strlen(errmsg);
-	buf = imsg_create(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(),
-	    msg_len + err_len + 3);
-	if (buf == NULL)
-		_err("imsg");
-	if (imsg_add(buf, msg, msg_len) == -1 ||
-	    imsg_add(buf, ": ", 2) == -1 ||
-	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
-		_err("imsg");
-	imsg_close(&ibuf, buf);
-	if (in->fd != -1 && close(in->fd) != 0)
-		msgwarn("close");
-	in->fd = -1;
-	in->fmt = UNKNOWN;
-}
-
-void
-file_errx(struct input *in, char *msg)
-{
-	if (imsg_compose(&ibuf, (u_int32_t)MSG_FILE_ERR, 0, getpid(), -1, msg,
-	    (u_int16_t)strlen(msg)+1) == -1)
-		_err("imsg");
-	if (in->fd != -1 && close(in->fd) != 0)
-		msgwarn("close");
-	in->fd = -1;
-	in->fmt = UNKNOWN;
-}
-
-__dead void
-fatal(char *msg)
-{
-	struct ibuf	*buf;
-	char		*errmsg;
-	u_int16_t	msg_len, err_len;
-
-	errmsg = strerror(errno);
-	msg_len = (u_int16_t)strlen(msg);
-	err_len = (u_int16_t)strlen(errmsg);
-	buf = imsg_create(&ibuf, (u_int32_t)MSG_FATAL, 0, getpid(),
-	    msg_len + err_len + 3);
-	if (buf == NULL)
-		_err("imsg");
-	if (imsg_add(buf, msg, msg_len) == -1 ||
-	    imsg_add(buf, ": ", 2) == -1 ||
-	    imsg_add(buf, errmsg, strlen(errmsg)+1) == -1)
-		_err("imsg");
-	imsg_close(&ibuf, buf);
-	if (imsg_flush(&ibuf) == -1)
-		_err("imsg");
-	_exit(1);
-}
-
-__dead void
-fatalx(char *msg)
-{
-	char		*errmsg;
-	u_int16_t	msg_len, err_len;
-
-	errmsg = strerror(errno);
-	msg_len = (u_int16_t)strlen(msg);
-	err_len = (u_int16_t)strlen(errmsg);
-	if (imsg_compose(&ibuf, (u_int32_t)MSG_FATAL, 0, getpid(), -1, msg,
-	    (u_int16_t)strlen(msg)+1) == -1)
-		_err("imsg");
-	if (imsg_flush(&ibuf) == -1)
-		_err("imsg");
-	_exit(1);
-}
-
-/*
- * If the child process cannot communicate with the parent anymore, we try to
- * write an error message to stderr and exit.
- */
-__dead void
-_err(char *msg)
-{
-	dprintf(2, "pnp child: %s: %s\n", msg, strerror(errno));
-	_exit(1);
 }

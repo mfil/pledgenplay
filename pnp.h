@@ -56,7 +56,7 @@ void		parent_init(int[2], pid_t);
 int		start_play(char *);
 int		pause_play(void);
 int		resume_play(void);
-void		child_warn(char *, size_t);
+//void		child_warn(char *, size_t);
 int 		check_child(void);
 __dead void	parent_err(const char *);
 ssize_t		parent_process_events(struct imsg *);

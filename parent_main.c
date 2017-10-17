@@ -32,6 +32,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "child_messages.h"
 #include "comm.h"
 #include "pnp.h"
 
@@ -44,6 +45,8 @@ static struct pollfd	pfd;
 static int		term_sig, caught_sigchld;
 static pid_t		child_pid;
 static void		(*err_cb)(int, char *) = print_err;
+
+void			warning_received(char *, size_t);
 
 extern char		*__progname;
 
@@ -378,7 +381,7 @@ free_meta(struct meta *mdata)
 }
 
 void
-child_warn(char *msg, size_t len)
+warning_received(char *msg, size_t len)
 {
 	msg[len] = '\0';
 	printf("pnp child: warning: %s\n", msg);

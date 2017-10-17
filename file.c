@@ -24,9 +24,11 @@
 #include <string.h>
 
 #include "comm.h"
+#include "child_errors.h"
+#include "child_messages.h"
 #include "file.h"
 
-static int		vorbis_to_type(char *);
+static MESSAGE_TYPE	vorbis_to_type(char *);
 static int		id3v2_to_type(unsigned char *);
 static size_t		be_to_uint(unsigned char *);
 static size_t		le_to_uint(unsigned char *);
@@ -108,8 +110,15 @@ parse_vorbis_comment(unsigned char *vcm, ssize_t len)
 			comm_len -= key_len;
 			/* Send the message to the parent. */
 			type = vorbis_to_type((char *)key);
-			if (type > -1)
-				msg(type, vcm, comm_len);
+			if (type > -1) {
+				char *string = malloc(comm_len + 1);
+				if (string == NULL) {
+					child_fatal("malloc");
+				}
+				strlcpy(string, vcm, comm_len + 1);
+				enqueue_message(type, string);
+				free(string);
+			}
 		}
 		else
 			/* Malformed comment. */
@@ -162,13 +171,13 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 		}
 		if (frameflags[1] & 0x40) {
 			/* Encrypted frame. */
-			msgwarnx("Encrypted id3v2 frames not supported.");
+			child_warnx("Encrypted id3v2 frames not supported.");
 			id3 += framelen;
 			continue;
 		}
 		if (frameflags[1] & 0x80) {
 			/* Compressed frame. */
-			msgwarnx("Compressed id3v2 frames not supported.");
+			child_warnx("Compressed id3v2 frames not supported.");
 			id3 += framelen;
 			continue;
 		}
@@ -186,17 +195,17 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 		}
 		else {
 			/* Invalid */
-			msgwarnx("Unknown text encoding in id3v2 frame.");
+			child_warnx("Unknown text encoding in id3v2 frame.");
 			return (-1);
 		}
 		id3++;
 		framelen--;
 		if ((utf8str = malloc(utf8len)) == NULL)
-			fatal("malloc");
+			child_fatal("malloc");
 		utf8strp = utf8str;
 		if (iconv(conv, (char **)&id3, &framelen, &utf8strp, &utf8len)
 		    == -1) {
-			msgwarn("iconv");
+			child_warn("iconv");
 			free(utf8str);
 			return (-1);
 		}
@@ -205,15 +214,15 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 			/* The time is given in milliseconds. */
 			time = strtonum(utf8str, 0, INT_MAX, &errstr);
 			if (errstr == NULL) {
-				msgwarn("strtonum");
+				child_warn("strtonum");
 				return (-1);
 			}
 			time = time % 1000 < 500 ? time/1000 : time/1000 + 1;
 			tlen = asprintf(&tstr, "%d:%02d", (int)time/60,
 			    (int)time % 60);
 			if (tstr == NULL)
-				fatal("malloc");
-			msg(META_TIME, tstr, tlen);
+				child_fatal("malloc");
+			enqueue_message(META_TIME, tstr);
 			free(tstr);
 		}
 		else if (type == META_TRACKNO) {
@@ -222,10 +231,10 @@ parse_id3v2(unsigned char flags, unsigned char *id3, ssize_t len)
 				if (utf8str[trcklen] == '/')
 					break;
 				}
-			msg(type, utf8str, trcklen);
+			enqueue_message(type, utf8str);
 		}
 		else
-			msg(type, utf8str, strlen(utf8str));
+			enqueue_message(type, utf8str);
 		free(utf8str);
 		id3 += framelen;
 	}
@@ -252,7 +261,7 @@ id3v2_to_type(unsigned char *id)
 
 
 /* Convert a VORBIS COMMENT key to the appropriate imsg type. */
-static int
+static MESSAGE_TYPE
 vorbis_to_type(char *key)
 {
 	if (strcasecmp(key, "ARTIST") == 0) 

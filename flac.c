@@ -27,6 +27,8 @@
 
 #include "comm.h"
 #include "child.h"
+#include "child_errors.h"
+#include "child_messages.h"
 #include "file.h"
 #include "flac.h"
 #include "out_sndio.h"
@@ -65,15 +67,15 @@ init_flac_decoder(struct flac_client_data *cdata)
 		write_cb = write_cb_file;
 		break;
 	default:
-		msgwarnx("invalid output type\n");
+		child_warnx("invalid output type\n");
 		return (NULL);
 	}
 	if ((dec = FLAC__stream_decoder_new()) == NULL)
-		fatal("malloc");
+		child_fatal("malloc");
 	if (FLAC__stream_decoder_init_stream(dec, read_cb, NULL, NULL, NULL,
 	    NULL, write_cb, mdata_cb, err_cb, cdata)
 	    != FLAC__STREAM_DECODER_INIT_STATUS_OK) {
-		msgwarnx("flac decoder: initialization failed");
+		child_warnx("flac decoder: initialization failed");
 		return (NULL);
 	}
 	return (dec);
@@ -104,7 +106,7 @@ read_cb(const FLAC__StreamDecoder *dec, FLAC__byte *buf, size_t *len,
 	w_pos = in->write_pos;
 	to_read = *len;
 	if (to_read == 0) {
-		msgwarnx("input buffer is empty\n");
+		child_warnx("input buffer is empty\n");
 		return (FLAC__STREAM_DECODER_READ_STATUS_CONTINUE);
 	}
 	if (r_pos + to_read <= size) {
@@ -177,13 +179,13 @@ write_cb_sndio(const FLAC__StreamDecoder *dec, const FLAC__Frame *frame,
 
 	cdata = (struct flac_client_data *)client_data;
 	if (frame->header.bits_per_sample != cdata->bps)
-		fatalx("FLAC files with variable bps are not supported.");
+		child_fatalx("FLAC files with variable bps are not supported.");
 	if (frame->header.channels != cdata->channels)
-		fatalx("FLAC files with a variable number of channels are"
+		child_fatalx("FLAC files with a variable number of channels are"
 		    " not supported.");
 	nput = sbuf_put(cdata->sbuf, decoded_samples, frame->header.blocksize);
 	if (nput < frame->header.blocksize)
-		fatalx("Sample buffer full.");
+		child_fatalx("Sample buffer full.");
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
 
@@ -246,9 +248,9 @@ play_flac(struct input *in, struct out *out, struct state *state)
 				return (-1);
 		}
 		if (fclose(out->handle.fp))
-			msgwarn("fclose");
+			child_warn("fclose");
 		cleanup_flac_decoder(dec);
-		msg(MSG_DONE, NULL, 0);
+		enqueue_message(MSG_DONE, "");
 		return (0);
 	}
 
@@ -263,21 +265,21 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	par.appbufsz = (cdata.rate * 200) / 1000; /* 200 ms buffer */
 	par.xrun = SIO_IGNORE;
 	if (sio_setpar(out->handle.sio, &par) == 0)
-		fatalx("sio_setpar: failed");
+		child_fatalx("sio_setpar: failed");
 	/*
 	 * Now check if the parameters were set correctly.
 	 * According to sio_open(3), a difference of 0.5% in the rate
 	 * should be negligible.
 	 */
 	if (sio_getpar(out->handle.sio, &par) == 0)
-		fatal("sio_getpar");
+		child_fatal("sio_getpar");
 	if (par.bits != cdata.bps || par.bps != cdata.bps/8
 	    || par.sig != 1 || par.le != 1
 	    || par.pchan != cdata.channels || par.xrun != SIO_IGNORE
 	    || par.appbufsz != (cdata.rate * 200) / 1000
 	    || par.rate < (995*cdata.rate)/1000
 	    || par.rate > (1005*cdata.rate)/1000) {
-		fatalx("setting sndio parameters failed");
+		child_fatalx("setting sndio parameters failed");
 	}
 	/* Prepare the buffer for the samples. */
 	size_t	sbuf_size;
@@ -294,9 +296,9 @@ play_flac(struct input *in, struct out *out, struct state *state)
 	sbuf_size = sbuf_size - (sbuf_size % par.round);
 	cdata.sbuf = sbuf_new(cdata.bps/8, cdata.channels, sbuf_size);
 	if (cdata.sbuf == NULL)
-		fatal("calloc");
+		child_fatal("calloc");
 	if (sio_start(out->handle.sio) == 0)
-		fatalx("sio_start: failed\n");
+		child_fatalx("sio_start: failed\n");
 
 	while (1) {
 		process_events(in, out, state);
@@ -305,19 +307,19 @@ play_flac(struct input *in, struct out *out, struct state *state)
 			state->play = PLAYING;
 			if (out->type == OUT_SNDIO &&
 			    sio_start(out->handle.sio) == 0)
-				fatalx("sio_start: failed\n");
+				child_fatalx("sio_start: failed\n");
 			/* Fallthrough */
 		case (PLAYING):
 			/* sndio output */
 			if (out->type == OUT_SNDIO && out->ready &&
 			    sbuf_sio_write(cdata.sbuf, out->handle.sio)) {
-				fatalx("sio_write: failed");
+				child_fatalx("sio_write: failed");
 			}
 			if (decode_done
 			    && cdata.sbuf->free == cdata.sbuf->size) {
 				sio_stop(out->handle.sio);
 				cleanup_flac_decoder(dec);
-				msg(MSG_DONE, NULL, 0);
+				enqueue_message(MSG_DONE, "");
 				return (0);
 			}
 			if (!decode_done
@@ -342,7 +344,7 @@ play_flac(struct input *in, struct out *out, struct state *state)
 			 */
 			if (out->type == OUT_SNDIO &&
 			    sio_stop(out->handle.sio) == 0)
-				fatalx("sio_stop: failed\n");
+				child_fatalx("sio_stop: failed\n");
 			state->play = PAUSED;
 			/* Fallthrough */
 		case (PAUSED):
@@ -350,11 +352,11 @@ play_flac(struct input *in, struct out *out, struct state *state)
 		case (STOPPED):
 			if (out->type == OUT_SNDIO &&
 			    sio_stop(out->handle.sio) == 0)
-				fatalx("sio_stop: failed\n");
+				child_fatalx("sio_stop: failed\n");
 			cleanup_flac_decoder(dec);
 			return (0);
 		default:
-			fatal("unknown state");
+			child_fatal("unknown state");
 		}
 	}
 }
@@ -363,7 +365,7 @@ static void
 cleanup_flac_decoder(FLAC__StreamDecoder *dec)
 {
 	if (!(FLAC__stream_decoder_finish(dec)))
-		msgwarnx("flac decoder: bad MD5 checksum\n");
+		child_warnx("flac decoder: bad MD5 checksum\n");
 	FLAC__stream_decoder_delete(dec);
 }
 
@@ -396,7 +398,7 @@ extract_meta_flac(struct input *in)
 		len = (id3_hdr[6] << 21) + (id3_hdr[7] << 14) +
 		    (id3_hdr[8] << 7) + id3_hdr[9];
 		if ((mdata = malloc(len)) == NULL)
-			fatal("malloc");
+			child_fatal("malloc");
 		if (read(fd, mdata, len) < len) {
 			file_err(in, "read");
 			return (-1);
@@ -443,15 +445,15 @@ extract_meta_flac(struct input *in)
 	samples = get_samples(str_info);
 	if (samples == 0)
 		/* 0 samples means an unknown number. */
-		msg(META_TIME, "?", 1);
+		enqueue_message(META_TIME, "?");
 	else {
 		int	len;
 		t = samples/rate;
 		len = asprintf(&t_str, "%u:%02u", (unsigned int)(t/60),
 		    (unsigned int)(t % 60)); /* m:s */
 		if (len == -1)
-			fatal("malloc");
-		msg(META_TIME, t_str, len);
+			child_fatal("malloc");
+		enqueue_message(META_TIME, t_str);
 		free(t_str);
 	}
 	if (id3v2_found)
@@ -468,7 +470,7 @@ extract_meta_flac(struct input *in)
 			/* Found a VORBIS_COMMENT block. */
 			len = blocksize(mdata_hdr);
 			if ((mdata = malloc(len)) == NULL)
-				fatal("malloc");
+				child_fatal("malloc");
 			if (read(fd, mdata, len) < len) {
 				file_err(in, "read");
 				return (-1);
@@ -534,18 +536,18 @@ flac_error_msg(FLAC__StreamDecoderErrorStatus error_status)
 {
 	switch (error_status) {
 	case (FLAC__STREAM_DECODER_ERROR_STATUS_LOST_SYNC):
-		msgwarnx("flac decoder: lost sync");
+		child_warnx("flac decoder: lost sync");
 		break;
 	case (FLAC__STREAM_DECODER_ERROR_STATUS_BAD_HEADER):
-		msgwarnx("flac decoder: bad header");
+		child_warnx("flac decoder: bad header");
 		break;
 	case (FLAC__STREAM_DECODER_ERROR_STATUS_FRAME_CRC_MISMATCH):
-		msgwarnx("flac decoder: CRC mismatch");
+		child_warnx("flac decoder: CRC mismatch");
 		break;
 	case (FLAC__STREAM_DECODER_ERROR_STATUS_UNPARSEABLE_STREAM):
-		msgwarnx("flac decoder: unparseable stream");
+		child_warnx("flac decoder: unparseable stream");
 		break;
 	default:
-		msgwarnx("flac decoder: unknown error");
+		child_warnx("flac decoder: unknown error");
 	}
 }
