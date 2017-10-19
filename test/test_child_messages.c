@@ -37,19 +37,24 @@
 static int child_warn_called = 0;
 static int file_err_called = 0;
 
+enum {
+	IPC_ERROR_EXIT_CODE,
+	FATAL_EXIT_CODE,
+};
+
 void
 ipc_error(const char *message) {
-	exit(1);
+	exit(IPC_ERROR_EXIT_CODE);
 }
 
 void
 child_fatal(const char *message) {
-	exit(1);
+	exit(FATAL_EXIT_CODE);
 }
 
 void
 child_fatalx(const char *message) {
-	exit(1);
+	exit(FATAL_EXIT_CODE);
 }
 
 void
@@ -72,56 +77,78 @@ file_errx(const char *message) {
 	file_err_called = 1;
 }
 
+/* Mock up inter-process communication. */
+
+static struct imsgbuf ibuf;
+
+static void prepare_mock_ipc(void);
+static void parent_sends_message(MESSAGE_TYPE);
+static void parent_sends_new_input_file(char []);
+
+static void
+prepare_mock_ipc()
+{
+	int sockets[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sockets) == -1) {
+		err(1, "socketpair");
+	}
+
+	/* "Parent" */
+	imsg_init(&ibuf, sockets[0]);
+
+	/* "Child" */
+	initialize_ipc(sockets[1]);
+}
+
+static void
+parent_sends_message(MESSAGE_TYPE type)
+{
+	if (imsg_compose(&ibuf, (uint32_t)type, 0, getpid(), -1, NULL, 0) ==
+	    -1) {
+		err(1, "imsg_compose");
+	}
+	if (imsg_flush(&ibuf) == -1) {
+		err(1, "imsg_flush");
+	}
+}
+
+static void
+parent_sends_new_input_file(char filename[])
+{
+	int fd = open(filename, O_RDONLY);
+	if (fd == -1) {
+		err(1, "open");
+	}
+	if (imsg_compose(&ibuf, (uint32_t)NEW_FILE, 0, getpid(), fd, NULL,
+	    0) == -1) {
+		err(1, "imsg_compose");
+	}
+	if (imsg_flush(&ibuf) == -1) {
+		err(1, "imsg_flush");
+	}
+}
+
 START_TEST (get_next_message_returns_0_when_no_message_ready)
 {
-	/* Prepare communication sockets. */
+	prepare_mock_ipc();
 
-	int sv[2];
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
-		err(1, "socketpair");
-
-	/* Prepare ibuf. */
-
-	struct imsgbuf	ibuf;
-	imsg_init(&ibuf, sv[0]);
-
-	/* Initialize message handling of child. */
-
-	initialize_ipc(sv[1]);
-
-	/* Try to get a message. */
+	/* "Child" tries to get a message. */
 
 	struct message message;
-	ck_assert_int_eq(get_next_message(&message), 0);
+	int status = get_next_message(&message);
+	ck_assert_int_eq(status, 0);
 }
 END_TEST
 
 START_TEST (get_next_message_receives_command_messages)
 {
-	/* Prepare communication sockets. */
+	prepare_mock_ipc();
 
-	int sv[2];
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
-		err(1, "socketpair");
+	const MESSAGE_TYPE command_message_types[4] = { CMD_EXIT, CMD_META,
+	    CMD_PLAY, CMD_PAUSE };
+	parent_sends_message(command_message_types[_i]);
 
-	/* Prepare ibuf. */
-
-	struct imsgbuf	ibuf;
-	imsg_init(&ibuf, sv[0]);
-
-	/* Initialize message handling of child. */
-
-	initialize_ipc(sv[1]);
-
-	/* Send the message. */
-
-	MESSAGE_TYPE command_message_types[4] = { CMD_EXIT, CMD_META, CMD_PLAY,
-	    CMD_PAUSE };
-	imsg_compose(&ibuf, (uint32_t)command_message_types[_i], 0, getpid(),
-	    -1, NULL, 0);
-	imsg_flush(&ibuf);
-
-	/* Try to get a message. */
+	/* "Child" tries to get the message. */
 
 	receive_messages();
 	struct message message;
@@ -131,43 +158,25 @@ START_TEST (get_next_message_receives_command_messages)
 }
 END_TEST
 
-START_TEST (get_next_message_receives_fd)
+START_TEST (get_next_message_receives_input_file)
 {
-	/* Prepare communication sockets. */
+	prepare_mock_ipc();
 
-	int sv[2];
-	if (socketpair(AF_UNIX, SOCK_STREAM, PF_LOCAL, sv) == -1)
-		err(1, "socketpair");
+	/* "Parent" sends the message. */
 
-	/* Prepare ibuf. */
+	parent_sends_new_input_file("./testdata/test.flac");
 
-	struct imsgbuf	ibuf;
-	imsg_init(&ibuf, sv[0]);
-
-	/* Initialize message handling of child. */
-
-	initialize_ipc(sv[1]);
-
-	/* Send the message. */
-
-	int fd = open("./testdata/test.flac", O_RDONLY);
-	imsg_compose(&ibuf, (uint32_t)NEW_FILE, 0, getpid(), fd, NULL, 0);
-	imsg_flush(&ibuf);
-
-	/* Try to get the message. */
+	/* Check if the message has arrived and has the correct type. */
 
 	receive_messages();
 	struct message message;
 	int status = get_next_message(&message);
-
-	/* Check if the message has arrived and has the correct type. */
-
 	ck_assert_int_eq(status, 1);
 	ck_assert_int_eq(message.type, NEW_FILE);
 
 	/*
 	 * Check if the received fd can be read. It should start with the magic
-	 * bytes 'fLaC'.
+	 * bytes "fLaC".
 	 */
 	int received_fd = message.data.fd;
 	char magic_bytes[5] = "fLaC";
@@ -187,7 +196,8 @@ Suite
 	    get_next_message_returns_0_when_no_message_ready);
 	tcase_add_loop_test(tc_get_next_message,
 	    get_next_message_receives_command_messages, 0, 4);
-	tcase_add_test(tc_get_next_message, get_next_message_receives_fd);
+	tcase_add_test(tc_get_next_message,
+	    get_next_message_receives_input_file);
 
 	suite_add_tcase(s, tc_get_next_message);
 	
