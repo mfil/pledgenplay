@@ -26,6 +26,7 @@
 
 #include "child_errors.h"
 #include "child_messages.h"
+#include "message_types.h"
 
 #define IMSG_FAILURE			(-1)
 #define IMSG_GET_NO_MESSAGES		(0)
@@ -112,13 +113,12 @@ get_next_message(struct message *message)
 		return (0);
 	}
 	/*
-	 * Check the message type. If it is a valid message (setting a new input
-	 * file or issuing a command to the player), pass the message type to
-	 * the caller. Add additional data if applicable.
-	*/
+	 * Check if the message type is valid and extract additional data if
+	 * applicable.
+	 */
 	switch (imessage.hdr.type) {
-	case (NEW_FILE):
-		message->type = NEW_FILE;
+	case (CMD_NEW_INPUT_FILE):
+		message->type = imessage.hdr.type;
 		message->data.fd = imessage.fd;
 		break;
 	case (CMD_EXIT):
@@ -130,10 +130,9 @@ get_next_message(struct message *message)
 		message->data.fd = -1;
 		break;
 	default:
-		child_fatalx("Invalid or unexpected MESSAGE_TYPE received.");
+		child_fatalx("Invalid CMD_MESSAGE_TYPE received.");
 	}
 
-	/* Free the buffers associated with the imessage and return. */
 	imsg_free(&imessage);
 	return (1);
 }

@@ -31,6 +31,7 @@
 #include <unistd.h>
 
 #include "child_messages.h"
+#include "message_types.h"
 
 /* Mock error functions. */
 
@@ -119,8 +120,8 @@ parent_sends_new_input_file(char filename[])
 	if (fd == -1) {
 		err(1, "open");
 	}
-	if (imsg_compose(&ibuf, (uint32_t)NEW_FILE, 0, getpid(), fd, NULL,
-	    0) == -1) {
+	if (imsg_compose(&ibuf, (uint32_t)CMD_NEW_INPUT_FILE, 0, getpid(), fd,
+	    NULL, 0) == -1) {
 		err(1, "imsg_compose");
 	}
 	if (imsg_flush(&ibuf) == -1) {
@@ -144,9 +145,9 @@ START_TEST (get_next_message_receives_command_messages)
 {
 	prepare_mock_ipc();
 
-	const MESSAGE_TYPE command_message_types[4] = { CMD_EXIT, CMD_META,
-	    CMD_PLAY, CMD_PAUSE };
-	parent_sends_message(command_message_types[_i]);
+	/* _i loops over all valid message types (without associated files). */
+
+	parent_sends_message(_i);
 
 	/* "Child" tries to get the message. */
 
@@ -154,7 +155,7 @@ START_TEST (get_next_message_receives_command_messages)
 	struct message message;
 	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
 	ck_assert_int_eq(status, GOT_MESSAGE);
-	ck_assert_int_eq(message.type, command_message_types[_i]);
+	ck_assert_int_eq(message.type, _i);
 }
 END_TEST
 
@@ -169,7 +170,7 @@ START_TEST (get_next_message_receives_input_file)
 	struct message message;
 	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
 	ck_assert_int_eq(status, GOT_MESSAGE);
-	ck_assert_int_eq(message.type, NEW_FILE);
+	ck_assert_int_eq(message.type, CMD_NEW_INPUT_FILE);
 
 	/*
 	 * Check if the received fd can be read. It should start with the magic
@@ -188,10 +189,7 @@ START_TEST (get_next_message_raises_fatal_error_on_invalid_message_type)
 {
 	prepare_mock_ipc();
 
-	MESSAGE_TYPE invalid_message_types[12] = { MSG_ACK, MSG_NACK,
-	    MSG_FILE_ERR, MSG_DONE, MSG_WARN, MSG_FATAL, META_ARTIST,
-	    META_TITLE, META_ALBUM, META_TRACKNO, META_DATE, META_TIME };
-	parent_sends_message(invalid_message_types[_i]);
+	parent_sends_message(CMD_MESSAGE_SENTINEL);
 
 	/* "Child" gets message. */
 
@@ -209,12 +207,13 @@ Suite
 	tcase_add_test(tc_get_next_message,
 	    get_next_message_returns_NO_MESSAGES_when_no_message_ready);
 	tcase_add_loop_test(tc_get_next_message,
-	    get_next_message_receives_command_messages, 0, 4);
+	    get_next_message_receives_command_messages,
+	    1, CMD_MESSAGE_SENTINEL);
 	tcase_add_test(tc_get_next_message,
 	    get_next_message_receives_input_file);
-	tcase_add_loop_exit_test(tc_get_next_message,
+	tcase_add_exit_test(tc_get_next_message,
 	    get_next_message_raises_fatal_error_on_invalid_message_type,
-	    FATAL_EXIT_CODE, 0, 12);
+	    FATAL_EXIT_CODE);
 	suite_add_tcase(s, tc_get_next_message);
 	
 	return (s);

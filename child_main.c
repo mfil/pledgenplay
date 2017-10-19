@@ -39,6 +39,7 @@
 #include "comm.h"
 #include "file.h"
 #include "flac.h"
+#include "message_types.h"
 #include "pnp.h"
 
 static void	fill_inbuf(struct input *);
@@ -136,7 +137,7 @@ process_events(struct input *in, struct out *out, struct state *state)
 	struct message message;
 	while(get_next_message(&message) == GOT_MESSAGE) {
 		switch (message.type) {
-		case (NEW_FILE):
+		case (CMD_NEW_INPUT_FILE):
 			if (state->callback) {
 				state->task_new_file = 1;
 				state->new_fd = message.data.fd;

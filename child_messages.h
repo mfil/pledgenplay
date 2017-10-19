@@ -17,25 +17,7 @@
 #ifndef PNP_CHILD_MESSAGES_H
 #define PNP_CHILD_MESSAGES_H
 
-typedef enum {
-	NEW_FILE,	/* Send file descriptor to child */
-	CMD_EXIT,	/* Tell child to exit */
-	CMD_META,	/* Tell child to extract metadata */
-	CMD_PLAY,	/* Tell child to start playback */
-	CMD_PAUSE,	/* Tell child to pause playback */
-	MSG_ACK,	/* Acknowledge */
-	MSG_NACK,
-	MSG_FILE_ERR,	/* Error reading file */
-	MSG_DONE,	/* Playback/decoding finished */
-	MSG_WARN,	/* Warning */
-	MSG_FATAL,	/* Fatal error; child process exits */
-	META_ARTIST,	/* Child sends metadata */
-	META_TITLE,
-	META_ALBUM,
-	META_TRACKNO,
-	META_DATE,
-	META_TIME,
-} MESSAGE_TYPE;
+#include "message_types.h"
 
 typedef enum {
 	NO_MESSAGES,
@@ -47,8 +29,8 @@ union message_data {
 };
 
 struct message {
-	MESSAGE_TYPE		type;
-	union message_data	data;
+	CMD_MESSAGE_TYPE		type;
+	union message_data		data;
 };
 
 void			initialize_ipc(int);

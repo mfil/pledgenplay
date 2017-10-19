@@ -287,8 +287,8 @@ send_new_file(char *infile)
 	int		in_fd, rv = -1;
 
 	in_fd = open(infile, O_RDONLY|O_NONBLOCK);
-	if (imsg_compose(&ibuf, (u_int32_t)NEW_FILE, 0, 0, in_fd, NULL, 0)
-	    == -1)
+	if (imsg_compose(&ibuf, (u_int32_t)CMD_NEW_INPUT_FILE, 0, 0, in_fd,
+	    NULL, 0) == -1)
 		parent_err("imsg_compose");
 	while (1) {
 		if (parent_process_events(&msg) > 0) {
