@@ -134,7 +134,7 @@ process_events(struct input *in, struct out *out, struct state *state)
 	}
 
 	struct message message;
-	while(get_next_message(&message)) {
+	while(get_next_message(&message) == GOT_MESSAGE) {
 		switch (message.type) {
 		case (NEW_FILE):
 			if (state->callback) {

@@ -34,8 +34,13 @@ typedef enum {
 	META_ALBUM,
 	META_TRACKNO,
 	META_DATE,
-	META_TIME
+	META_TIME,
 } MESSAGE_TYPE;
+
+typedef enum {
+	NO_MESSAGES,
+	GOT_MESSAGE,
+} GET_NEXT_MESSAGE_STATUS;
 
 union message_data {
 	int	fd;
@@ -46,10 +51,10 @@ struct message {
 	union message_data	data;
 };
 
-void	initialize_ipc(int);
-void	send_messages(void);
-void	receive_messages(void);
-void	enqueue_message(MESSAGE_TYPE, char *);
-int	get_next_message(struct message *);
+void			initialize_ipc(int);
+void			send_messages(void);
+void			receive_messages(void);
+void			enqueue_message(MESSAGE_TYPE, char *);
+GET_NEXT_MESSAGE_STATUS	get_next_message(struct message *);
 
 #endif

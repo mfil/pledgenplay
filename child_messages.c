@@ -93,7 +93,7 @@ enqueue_message(MESSAGE_TYPE type, char *message)
 		ipc_error("Error in imsg_compose.");
 }
 
-int
+GET_NEXT_MESSAGE_STATUS
 get_next_message(struct message *message)
 {
 	/*

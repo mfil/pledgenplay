@@ -128,15 +128,15 @@ parent_sends_new_input_file(char filename[])
 	}
 }
 
-START_TEST (get_next_message_returns_0_when_no_message_ready)
+START_TEST (get_next_message_returns_NO_MESSAGES_when_no_message_ready)
 {
 	prepare_mock_ipc();
 
 	/* "Child" tries to get a message. */
 
 	struct message message;
-	int status = get_next_message(&message);
-	ck_assert_int_eq(status, 0);
+	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
+	ck_assert_int_eq(status, NO_MESSAGES);
 }
 END_TEST
 
@@ -152,8 +152,8 @@ START_TEST (get_next_message_receives_command_messages)
 
 	receive_messages();
 	struct message message;
-	int status = get_next_message(&message);
-	ck_assert_int_eq(status, 1);
+	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
+	ck_assert_int_eq(status, GOT_MESSAGE);
 	ck_assert_int_eq(message.type, command_message_types[_i]);
 }
 END_TEST
@@ -167,8 +167,8 @@ START_TEST (get_next_message_receives_input_file)
 
 	receive_messages();
 	struct message message;
-	int status = get_next_message(&message);
-	ck_assert_int_eq(status, 1);
+	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
+	ck_assert_int_eq(status, GOT_MESSAGE);
 	ck_assert_int_eq(message.type, NEW_FILE);
 
 	/*
@@ -197,7 +197,7 @@ START_TEST (get_next_message_raises_fatal_error_on_invalid_message_type)
 
 	receive_messages();
 	struct message message;
-	get_next_message(&message);
+	(void)get_next_message(&message);
 }
 END_TEST
 
@@ -207,7 +207,7 @@ Suite
 	Suite *s = suite_create("Test child_messages");
 	TCase *tc_get_next_message = tcase_create("get_next_message");
 	tcase_add_test(tc_get_next_message,
-	    get_next_message_returns_0_when_no_message_ready);
+	    get_next_message_returns_NO_MESSAGES_when_no_message_ready);
 	tcase_add_loop_test(tc_get_next_message,
 	    get_next_message_receives_command_messages, 0, 4);
 	tcase_add_test(tc_get_next_message,
