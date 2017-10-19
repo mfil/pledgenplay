@@ -107,13 +107,11 @@ GET_NEXT_MESSAGE_STATUS
 get_next_message(struct message *message)
 {
 	/*
-	 * Get the next message (if available), return 1 if there is a message
-	 * and 0 otherwise.
+	 * Grab the next message from the buffer and return NO_MESSAGES if
+	 * there are none.
 	 */
-
-	/* Grab the next message from the buffer. Return 0 if there is none. */
-	struct imsg	imessage;
-	ssize_t		imsg_get_status;
+	struct imsg imessage;
+	ssize_t imsg_get_status;
 	imsg_get_status = imsg_get(&ibuf, &imessage);
 	if (imsg_get_status == IMSG_FAILURE) {
 		ipc_error("Error in imsg_get.");
