@@ -202,8 +202,67 @@ END_TEST
 START_TEST (enqueue_message_raises_fatal_error_for_invalid_type)
 {
 	prepare_mock_ipc();
-
 	enqueue_message(MSG_SENTINEL, "");
+}
+END_TEST
+
+START_TEST (child_can_send_messages)
+{
+	prepare_mock_ipc();
+
+	/* _i loops over valid MESSAGE_TYPEs. */
+
+	const char test_message[] = "Test message";
+	enqueue_message(_i, test_message);
+	send_messages();
+
+	/* Parent receives messages. */
+
+	if (imsg_read(&ibuf) <= 0) {
+		err(1, "imsg_read");
+	}
+	struct imsg imessage;
+	if (imsg_get(&ibuf, &imessage) <= 0) {
+		err(1, "imsg_get");
+	}
+
+	ck_assert_int_eq((int)imessage.hdr.type, _i);
+	ck_assert_str_eq((char *)imessage.data, test_message);
+	imsg_free(&imessage);
+}
+END_TEST
+
+START_TEST (child_can_send_multiple_messages)
+{
+	prepare_mock_ipc();
+
+	const char test_message[] = "Test message";
+
+	/* Some arbitrary message types. */
+
+	const MESSAGE_TYPE types[] = { MSG_WARN, MSG_FATAL, META_ARTIST };
+	const size_t types_count = sizeof(types)/sizeof(types[0]);
+	int i;
+	for (i = 0; i < types_count; i++) {
+		enqueue_message(types[i], test_message);
+	}
+	send_messages();
+
+	/* Parent receives messages. */
+
+	int j;
+	if (imsg_read(&ibuf) <= 0) {
+		err(1, "imsg_read");
+	}
+	for (j = 0; j < types_count; j++) {
+		struct imsg imessage;
+		if (imsg_get(&ibuf, &imessage) <= 0) {
+			err(1, "imsg_get");
+		}
+		ck_assert_int_eq((int)imessage.hdr.type, types[j]);
+		ck_assert_str_eq((char *)imessage.data, test_message);
+		imsg_free(&imessage);
+	}
 }
 END_TEST
 
@@ -229,6 +288,9 @@ Suite
 	tcase_add_exit_test(tc_enqueue_message,
 	    enqueue_message_raises_fatal_error_for_invalid_type,
 	    FATAL_EXIT_CODE);
+	tcase_add_loop_test(tc_enqueue_message, child_can_send_messages,
+	    0, MSG_SENTINEL);
+	tcase_add_test(tc_enqueue_message, child_can_send_multiple_messages);
 	suite_add_tcase(s, tc_enqueue_message);
 	
 	return (s);
