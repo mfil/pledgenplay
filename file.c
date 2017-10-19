@@ -75,8 +75,8 @@ int
 parse_vorbis_comment(unsigned char *vcm, ssize_t len)
 {
 	unsigned char	*key;
-	size_t		ncomm, comm_len, key_len, i;
-	int		type;
+	size_t		    ncomm, comm_len, key_len, i;
+	int		        type;
 
 	if (len <= 8)
 		return (-1); /* Too short. */
@@ -115,7 +115,7 @@ parse_vorbis_comment(unsigned char *vcm, ssize_t len)
 				if (string == NULL) {
 					child_fatal("malloc");
 				}
-				strlcpy(string, vcm, comm_len + 1);
+				strlcpy(string, (char *)vcm, comm_len + 1);
 				enqueue_message(type, string);
 				free(string);
 			}
