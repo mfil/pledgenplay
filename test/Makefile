@@ -5,7 +5,7 @@ IDIRS=-I/usr/local/include -I..
 LDIRS=-L/usr/local/lib
 LIBS=-lcheck -lutil -lsndio -liconv -lFLAC
 
-all: decode_test ipc_test
+all: test_child_messages decode_test ipc_test
 
 child_main.o file.o flac.o out_sndio.o parent_main.o child_errors.o \
     child_messages.o:
