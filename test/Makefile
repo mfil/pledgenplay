@@ -26,6 +26,6 @@ ipc_test: ipc_test.c child_main.o child_messages.o child_errors.o out_sndio.o \
 	    ../obj/child_messages.o ../obj/child_errors.o ../obj/file.o \
 	    ../obj/flac.o ../obj/out_sndio.o ../obj/parent_main.o ipc_test.c
 
-test_child_messages: test_child_messages.c child_messages.o
+test_child_messages: test_child_messages.o child_messages.o
 	$(CC) $(CFLAGS) -o test_child_messages ../obj/child_messages.o \
 	    test_child_messages.c

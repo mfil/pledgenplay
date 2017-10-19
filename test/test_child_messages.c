@@ -199,10 +199,19 @@ START_TEST (get_next_message_raises_fatal_error_on_invalid_message_type)
 }
 END_TEST
 
+START_TEST (enqueue_message_raises_fatal_error_for_invalid_type)
+{
+	prepare_mock_ipc();
+
+	enqueue_message(MSG_SENTINEL, "");
+}
+END_TEST
+
 Suite
 *child_messages_suite(void)
 {
 	Suite *s = suite_create("Test child_messages");
+
 	TCase *tc_get_next_message = tcase_create("get_next_message");
 	tcase_add_test(tc_get_next_message,
 	    get_next_message_returns_NO_MESSAGES_when_no_message_ready);
@@ -215,6 +224,12 @@ Suite
 	    get_next_message_raises_fatal_error_on_invalid_message_type,
 	    FATAL_EXIT_CODE);
 	suite_add_tcase(s, tc_get_next_message);
+
+	TCase *tc_enqueue_message = tcase_create("enqueue_message");
+	tcase_add_exit_test(tc_enqueue_message,
+	    enqueue_message_raises_fatal_error_for_invalid_type,
+	    FATAL_EXIT_CODE);
+	suite_add_tcase(s, tc_enqueue_message);
 	
 	return (s);
 }

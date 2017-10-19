@@ -34,6 +34,8 @@
 
 static struct imsgbuf	ibuf;
 
+static int is_invalid_message_type(MESSAGE_TYPE);
+
 void
 initialize_ipc(int fd)
 {
@@ -75,16 +77,23 @@ enqueue_message(MESSAGE_TYPE type, char *message)
 	 * happen).
  	 */
 
+	if (is_invalid_message_type(type)) {
+		child_fatalx("Invalid MESSAGE_TYPE in enqueue_message.");
+	}
+
 	/*
 	 * Calculate the length of the message, including the terminating
 	 * null-byte.
 	 */
 	size_t message_length = strlen(message) + 1;
+
 	/* Truncate the message, if necessary. */
+
 	if (IMSG_MAX_MESSAGE_LENGTH < message_length) {
 		message_length = IMSG_MAX_MESSAGE_LENGTH;
 		message[message_length-1] = '\0';
 	}
+
 	/*
 	 * Enqueue the message. Casting message_length to uint16_t is ok
 	 * because it can't be larger after truncation.
@@ -135,4 +144,10 @@ get_next_message(struct message *message)
 
 	imsg_free(&imessage);
 	return (1);
+}
+
+static int
+is_invalid_message_type(MESSAGE_TYPE type)
+{
+	return (type < 0 || MSG_SENTINEL <= type);
 }
