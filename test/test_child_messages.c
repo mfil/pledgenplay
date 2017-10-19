@@ -161,9 +161,6 @@ END_TEST
 START_TEST (get_next_message_receives_input_file)
 {
 	prepare_mock_ipc();
-
-	/* "Parent" sends the message. */
-
 	parent_sends_new_input_file("./testdata/test.flac");
 
 	/* Check if the message has arrived and has the correct type. */
@@ -187,6 +184,23 @@ START_TEST (get_next_message_receives_input_file)
 }
 END_TEST
 
+START_TEST (get_next_message_raises_fatal_error_on_invalid_message_type)
+{
+	prepare_mock_ipc();
+
+	MESSAGE_TYPE invalid_message_types[12] = { MSG_ACK, MSG_NACK,
+	    MSG_FILE_ERR, MSG_DONE, MSG_WARN, MSG_FATAL, META_ARTIST,
+	    META_TITLE, META_ALBUM, META_TRACKNO, META_DATE, META_TIME };
+	parent_sends_message(invalid_message_types[_i]);
+
+	/* "Child" gets message. */
+
+	receive_messages();
+	struct message message;
+	get_next_message(&message);
+}
+END_TEST
+
 Suite
 *child_messages_suite(void)
 {
@@ -198,7 +212,9 @@ Suite
 	    get_next_message_receives_command_messages, 0, 4);
 	tcase_add_test(tc_get_next_message,
 	    get_next_message_receives_input_file);
-
+	tcase_add_loop_exit_test(tc_get_next_message,
+	    get_next_message_raises_fatal_error_on_invalid_message_type,
+	    FATAL_EXIT_CODE, 0, 12);
 	suite_add_tcase(s, tc_get_next_message);
 	
 	return (s);
