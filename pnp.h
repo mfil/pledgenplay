@@ -24,7 +24,7 @@
 #include <poll.h>
 
 /* output types */
-enum {NONE, OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
+enum {NO_OUT, OUT_SNDIO, OUT_WAV_FILE, OUT_RAW};
 /* Error types */
 enum {PNP_CHILD_WARN, PNP_CHILD_FATAL, PNP_CHILD_FILE_ERR, PNP_PARENT_WARN,
     PNP_PARENT_ERR};

@@ -60,10 +60,6 @@ file_err(struct input *in, char *message)
 		ipc_error("asprintf failed.");
 	}
 	enqueue_message((u_int32_t)MSG_FILE_ERR, full_message);
-	if (in->fd != -1 && close(in->fd) != 0)
-		child_warn("close");
-	in->fd = -1;
-	in->fmt = UNKNOWN;
 }
 
 void
@@ -74,10 +70,6 @@ file_errx(struct input *in, char *message)
 		ipc_error("asprintf failed.");
 	}
 	enqueue_message((u_int32_t)MSG_FILE_ERR, full_message);
-	if (in->fd != -1 && close(in->fd) != 0)
-		child_warn("close");
-	in->fd = -1;
-	in->fmt = UNKNOWN;
 }
 
 __dead void

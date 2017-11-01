@@ -14,16 +14,30 @@
  * PERFORMANCE OF THIS SOFTWARE.
  */
 
-#ifndef PNP_FILE_H
-#define PNP_FILE_H
+#ifndef PNP_INPUT_FILE_H
+#define PNP_INPUT_FILE_H
 
-#define ID3_HDR_LEN	10
+typedef enum {NONE, FLAC, MP3, WAVE_PCM} FILETYPE;
+typedef enum {
+	READ_OK,
+	READ_SHORT,
+	READ_EOF,
+	READ_ERROR,
+	READ_NO_FILE
+} READ_STATUS;
+typedef enum {SEEK_OK, SEEK_ERROR, SEEK_NO_FILE} SEEK_STATUS;
+typedef enum {
+	NEW_FILE_OK,
+	NEW_FILE_FAILURE,
+} NEW_FILE_STATUS;
 
-int	filetype(int);
-int	parse_id3v2(unsigned char, unsigned char *, ssize_t);
-int	parse_vorbis_comment(unsigned char *, ssize_t);
-int	write_wav_header(FILE *, unsigned int, unsigned int, unsigned int,
-	    uint64_t);
+NEW_FILE_STATUS set_new_input_file(int);
+void input_file_close(void);
+READ_STATUS input_file_read(void *, size_t, size_t *);
+SEEK_STATUS input_file_seek(long offset);
+SEEK_STATUS input_file_rewind(void);
+FILETYPE input_file_get_type(void);
+int input_file_has_id3v2_tag(void);
+int input_file_is_open(void);
 
-enum {UNKNOWN, FLAC, MP3, WAVE_PCM}; /* Return values for filetype. */
 #endif
