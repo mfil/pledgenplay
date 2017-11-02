@@ -32,51 +32,7 @@
 
 #include "child_messages.h"
 #include "message_types.h"
-
-/* Mock error functions. */
-
-static int child_warn_called = 0;
-static int file_err_called = 0;
-
-enum {
-	IPC_ERROR_EXIT_CODE,
-	FATAL_EXIT_CODE,
-};
-
-void
-ipc_error(const char *message) {
-	exit(IPC_ERROR_EXIT_CODE);
-}
-
-void
-child_fatal(const char *message) {
-	exit(FATAL_EXIT_CODE);
-}
-
-void
-child_fatalx(const char *message) {
-	exit(FATAL_EXIT_CODE);
-}
-
-void
-child_warn(const char *message) {
-	child_warn_called = 1;
-}
-
-void
-child_warnx(const char *message) {
-	child_warn_called = 1;
-}
-
-void
-file_err(const char *message) {
-	file_err_called = 1;
-}
-
-void
-file_errx(const char *message) {
-	file_err_called = 1;
-}
+#include "mock_errors.h"
 
 /* Mock up inter-process communication. */
 
