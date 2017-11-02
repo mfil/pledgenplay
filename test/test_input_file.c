@@ -178,6 +178,22 @@ START_TEST (no_seek_after_closing)
 }
 END_TEST
 
+START_TEST (cannot_seek_past_end_of_file)
+{
+	int fd = open("testdata/test.flac", O_RDONLY);
+	if (fd < 0) {
+		err(1, "open");
+	}
+	set_new_file_and_check(fd);
+
+	file_err_called = 0;
+	SEEK_STATUS status = input_file_seek(1 << 31);
+	ck_assert_int_eq(status, SEEK_ERROR);
+	ck_assert(file_err_called);
+	ck_assert(!input_file_is_open());
+}
+END_TEST
+
 Suite
 *child_messages_suite(void)
 {
@@ -192,6 +208,7 @@ Suite
 	tcase_add_test(tc_read_seek, input_file_read_and_seek_works);
 	tcase_add_test(tc_read_seek, no_read_after_closing);
 	tcase_add_test(tc_read_seek, no_seek_after_closing);
+	tcase_add_test(tc_read_seek, cannot_seek_past_end_of_file);
 
 	suite_add_tcase(s, tc_filetype);
 	suite_add_tcase(s, tc_read_seek);
