@@ -25,6 +25,45 @@
 #include "../input_file.h"
 #include "mock_errors.h"
 
+static void
+set_new_file_and_check(int fd)
+{
+	NEW_FILE_STATUS status = set_new_input_file(fd);
+	ck_assert_int_eq(status, NEW_FILE_OK);
+	ck_assert_int_ne(input_file_is_open(), 0);
+}
+
+static void
+close_and_check()
+{
+	child_warn_called = 0;
+	input_file_close();
+	ck_assert_int_eq(child_warn_called, 0);
+}
+
+static void
+read_and_check(void *buf, size_t length)
+{
+	size_t bytes_read;
+	READ_STATUS status = input_file_read(buf, length, &bytes_read);
+	ck_assert_int_eq(status, READ_OK);
+	ck_assert(length == bytes_read);
+}
+
+static void
+rewind_and_check(void)
+{
+	SEEK_STATUS status = input_file_rewind();
+	ck_assert_int_eq(status, SEEK_OK);
+}
+
+static void
+seek_and_check(long offset)
+{
+	SEEK_STATUS status = input_file_seek(offset);
+	ck_assert_int_eq(status, SEEK_OK);
+}
+
 START_TEST(input_file_determines_filetype)
 {
 	char *testfiles[3] = {"testdata/test.flac", "testdata/test.mp3",
@@ -34,15 +73,11 @@ START_TEST(input_file_determines_filetype)
 	if (fd < 0) {
 		err(1, "open");
 	}
-	NEW_FILE_STATUS status = set_new_input_file(fd);
-	ck_assert_int_eq(status, NEW_FILE_OK);
-	ck_assert_int_ne(input_file_is_open(), 0);
+	set_new_file_and_check(fd);
 	ck_assert_int_eq(input_file_has_id3v2_tag(), 0);
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
-	child_warn_called = 0;
-	input_file_close();
-	ck_assert_int_eq(child_warn_called, 0);
+	close_and_check();
 }
 END_TEST
 
@@ -55,15 +90,11 @@ START_TEST(input_file_detects_id3v2_tags)
 	if (fd < 0) {
 		err(1, "open");
 	}
-	NEW_FILE_STATUS status = set_new_input_file(fd);
-	ck_assert_int_eq(status, NEW_FILE_OK);
-	ck_assert_int_ne(input_file_is_open(), 0);
+	set_new_file_and_check(fd);
 	ck_assert_int_ne(input_file_has_id3v2_tag(), 0);
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
-	child_warn_called = 0;
-	input_file_close();
-	ck_assert_int_eq(child_warn_called, 0);
+	close_and_check();
 }
 END_TEST
 
@@ -88,39 +119,30 @@ START_TEST(input_file_read_and_seek_works)
 	if (fd < 0) {
 		err(1, "open");
 	}
-	NEW_FILE_STATUS new_file_status = set_new_input_file(fd);
-	ck_assert_int_eq(new_file_status, NEW_FILE_OK);
+	set_new_file_and_check(fd);
 
 	/* Read the first bytes. */
 
 	char test_buf[TEST_BUF_SIZE];
-	READ_STATUS read_status = input_file_read(test_buf, sizeof(test_buf),
-	    NULL);
-	ck_assert_int_eq(read_status, READ_OK);
+	read_and_check(test_buf, sizeof(test_buf));
 
 	/* Rewind and compare. */
 
-	SEEK_STATUS seek_status = input_file_rewind();
-	ck_assert_int_eq(seek_status, SEEK_OK);
+	rewind_and_check();
 	char compare_buf[TEST_BUF_SIZE];
-	read_status = input_file_read(compare_buf, sizeof(compare_buf), NULL);
-	ck_assert_int_eq(read_status, READ_OK);
+	read_and_check(compare_buf, sizeof(compare_buf));
 	ck_assert_int_eq(memcmp(test_buf, compare_buf, TEST_BUF_SIZE), 0);
 
 	/* Seek deeper into the file and repeat the experiment. */
 
-	seek_status = input_file_seek((long) 2 * TEST_BUF_SIZE);
-	ck_assert_int_eq(seek_status, SEEK_OK);
-	read_status = input_file_read(test_buf, sizeof(test_buf), NULL);
-	ck_assert_int_eq(read_status, READ_OK);
+	seek_and_check((long)(2 * TEST_BUF_SIZE));
+	read_and_check(test_buf, sizeof(test_buf));
 
-	seek_status = input_file_seek(-((long) TEST_BUF_SIZE));
-	ck_assert_int_eq(seek_status, SEEK_OK);
-	read_status = input_file_read(compare_buf, sizeof(compare_buf), NULL);
-	ck_assert_int_eq(read_status, READ_OK);
+	seek_and_check(-((long)TEST_BUF_SIZE));
+	read_and_check(compare_buf, sizeof(compare_buf));
 	ck_assert_int_eq(memcmp(test_buf, compare_buf, TEST_BUF_SIZE), 0);
 
-	input_file_close();
+	close_and_check();
 }
 END_TEST
 
