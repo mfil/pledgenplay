@@ -30,7 +30,7 @@ set_new_file_and_check(int fd)
 {
 	NEW_FILE_STATUS status = set_new_input_file(fd);
 	ck_assert_int_eq(status, NEW_FILE_OK);
-	ck_assert_int_ne(input_file_is_open(), 0);
+	ck_assert(input_file_is_open());
 }
 
 static void
@@ -38,7 +38,7 @@ close_and_check()
 {
 	child_warn_called = 0;
 	input_file_close();
-	ck_assert_int_eq(child_warn_called, 0);
+	ck_assert(!child_warn_called);
 }
 
 static void
@@ -74,7 +74,7 @@ START_TEST(input_file_determines_filetype)
 		err(1, "open");
 	}
 	set_new_file_and_check(fd);
-	ck_assert_int_eq(input_file_has_id3v2_tag(), 0);
+	ck_assert(!input_file_has_id3v2_tag());
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
 	close_and_check();
@@ -91,7 +91,7 @@ START_TEST(input_file_detects_id3v2_tags)
 		err(1, "open");
 	}
 	set_new_file_and_check(fd);
-	ck_assert_int_ne(input_file_has_id3v2_tag(), 0);
+	ck_assert(input_file_has_id3v2_tag());
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
 	close_and_check();
@@ -107,8 +107,8 @@ START_TEST(input_file_calls_file_err_on_invalid_file)
 	file_err_called = 0;
 	NEW_FILE_STATUS status = set_new_input_file(fd);
 	ck_assert_int_eq(status, NEW_FILE_FAILURE);
-	ck_assert_int_eq(file_err_called, 1);
-	ck_assert_int_eq(input_file_is_open(), 0);
+	ck_assert(file_err_called);
+	ck_assert(!input_file_is_open());
 }
 END_TEST
 
