@@ -36,7 +36,7 @@ struct message {
 void			initialize_ipc(int);
 void			send_messages(void);
 void			receive_messages(void);
-void			enqueue_message(MESSAGE_TYPE, char *);
+void			enqueue_message(MESSAGE_TYPE, const char *);
 GET_NEXT_MESSAGE_STATUS	get_next_message(struct message *);
 
 #endif
