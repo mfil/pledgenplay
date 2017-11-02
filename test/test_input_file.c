@@ -26,8 +26,12 @@
 #include "mock_errors.h"
 
 static void
-set_new_file_and_check(int fd)
+set_new_file_and_check(const char *filename)
 {
+	int fd = open(filename, O_RDONLY);
+	if (fd < 0) {
+		err(1, "open");
+	}
 	NEW_FILE_STATUS status = set_new_input_file(fd);
 	ck_assert_int_eq(status, NEW_FILE_OK);
 	ck_assert(input_file_is_open());
@@ -69,11 +73,7 @@ START_TEST (input_file_determines_filetype)
 	char *testfiles[3] = {"testdata/test.flac", "testdata/test.mp3",
 	    "testdata/test.wav"};
 	int filetypes[3] = {FLAC, MP3, WAVE_PCM};
-	int fd = open(testfiles[_i], O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
-	set_new_file_and_check(fd);
+	set_new_file_and_check(testfiles[_i]);
 	ck_assert(!input_file_has_id3v2_tag());
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
@@ -86,11 +86,7 @@ START_TEST (input_file_detects_id3v2_tags)
 	char *testfiles[3] = {"testdata/with_id3v2.flac",
 	    "testdata/with_id3v2.mp3", "testdata/with_id3v2.wav"};
 	int filetypes[3] = {FLAC, MP3, WAVE_PCM};
-	int fd = open(testfiles[_i], O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
-	set_new_file_and_check(fd);
+	set_new_file_and_check(testfiles[_i]);
 	ck_assert(input_file_has_id3v2_tag());
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
@@ -115,11 +111,7 @@ END_TEST
 START_TEST (input_file_read_and_seek_works)
 {
 	const size_t TEST_BUF_SIZE = 100;
-	int fd = open("testdata/test.flac", O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
-	set_new_file_and_check(fd);
+	set_new_file_and_check("testdata/test.flac");
 
 	/* Read the first bytes. */
 
@@ -148,11 +140,7 @@ END_TEST
 
 START_TEST (no_read_after_closing)
 {
-	int fd = open("testdata/test.flac", O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
-	set_new_file_and_check(fd);
+	set_new_file_and_check("testdata/test.flac");
 
 	close_and_check();
 
@@ -163,11 +151,7 @@ END_TEST
 
 START_TEST (no_seek_after_closing)
 {
-	int fd = open("testdata/test.flac", O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
-	set_new_file_and_check(fd);
+	set_new_file_and_check("testdata/test.flac");
 
 	close_and_check();
 
@@ -180,11 +164,7 @@ END_TEST
 
 START_TEST (cannot_seek_past_end_of_file)
 {
-	int fd = open("testdata/test.flac", O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
-	set_new_file_and_check(fd);
+	set_new_file_and_check("testdata/test.flac");
 
 	file_err_called = 0;
 	SEEK_STATUS status = input_file_seek(1 << 31);
