@@ -162,6 +162,24 @@ START_TEST (enqueue_message_raises_fatal_error_for_invalid_type)
 }
 END_TEST
 
+START_TEST (enqueue_message_warns_about_over_long_messages)
+{
+	prepare_mock_ipc();
+
+	/* Prepare an over-long message. */
+
+	char long_message[UINT16_MAX+1];
+	memset(long_message, 'A', sizeof(long_message));
+	long_message[UINT16_MAX] = '\0';
+
+	/* Check if child_warn() is called. */
+
+	child_warn_called = 0;
+	enqueue_message(MSG_ACK, long_message);
+	ck_assert_int_ne(child_warn_called, 0);
+}
+END_TEST
+
 START_TEST (child_can_send_messages)
 {
 	prepare_mock_ipc();
@@ -244,6 +262,8 @@ Suite
 	tcase_add_exit_test(tc_enqueue_message,
 	    enqueue_message_raises_fatal_error_for_invalid_type,
 	    FATAL_EXIT_CODE);
+	tcase_add_test(tc_enqueue_message,
+	    enqueue_message_warns_about_over_long_messages);
 	tcase_add_loop_test(tc_enqueue_message, child_can_send_messages,
 	    0, MSG_SENTINEL);
 	tcase_add_test(tc_enqueue_message, child_can_send_multiple_messages);
