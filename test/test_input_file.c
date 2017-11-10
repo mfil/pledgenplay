@@ -68,6 +68,13 @@ seek_and_check(long offset)
 	ck_assert_int_eq(status, SEEK_OK);
 }
 
+static void
+to_eof_and_check(void)
+{
+	SEEK_STATUS status = input_file_to_eof();
+	ck_assert_int_eq(status, SEEK_OK);
+}
+
 START_TEST (input_file_determines_filetype)
 {
 	char *testfiles[3] = {"testdata/test.flac", "testdata/test.mp3",
@@ -174,8 +181,31 @@ START_TEST (cannot_seek_past_end_of_file)
 }
 END_TEST
 
+START_TEST (read_returns_eof_at_end_of_file)
+{
+	set_new_file_and_check("testdata/test.flac");
+
+	/* Try to read one byte past the end. */
+
+	to_eof_and_check();
+	char buf[50];
+	size_t bytes_read;
+	READ_STATUS status = input_file_read(buf, 1, &bytes_read);
+	ck_assert_int_eq(status, READ_EOF);
+	ck_assert_int_eq(bytes_read, 0);
+
+	/* Try to read 50 bytes starting 30 bytes before the end. */
+
+	to_eof_and_check();
+	seek_and_check(-30);
+	status = input_file_read(buf, 50, &bytes_read);
+	ck_assert_int_eq(status, READ_EOF);
+	ck_assert_int_eq(bytes_read, 30);
+}
+END_TEST
+
 Suite
-*child_messages_suite(void)
+*input_file_suite(void)
 {
 	Suite *s = suite_create("Test input_file");
 
@@ -189,6 +219,7 @@ Suite
 	tcase_add_test(tc_read_seek, no_read_after_closing);
 	tcase_add_test(tc_read_seek, no_seek_after_closing);
 	tcase_add_test(tc_read_seek, cannot_seek_past_end_of_file);
+	tcase_add_test(tc_read_seek, read_returns_eof_at_end_of_file);
 
 	suite_add_tcase(s, tc_filetype);
 	suite_add_tcase(s, tc_read_seek);
@@ -203,7 +234,7 @@ main(void)
 	Suite	*s;
 	SRunner	*sr;
 
-	s = child_messages_suite();
+	s = input_file_suite();
 	sr = srunner_create(s);
 
 	srunner_run_all(sr, CK_NORMAL);

@@ -95,7 +95,6 @@ detect_id3v2_tag(void)
 	char identifier[3];
 	READ_STATUS status = input_file_read(identifier, 3, NULL);
 	switch (status) {
-	case READ_SHORT:
 	case READ_EOF:
 		/* No music file is less than 3 bytes long. */
 		input_file_close();
@@ -142,22 +141,23 @@ input_file_read(void *buf, size_t length, size_t *bytes_read)
 		*bytes_read = nread;
 	}
 
-	/* If the return value is smaller than length, it may indicate
-	 * an error, or that the end of file is reached, so we need to
-	 * figure out which is the case. */
+	READ_STATUS status = READ_OK;
+
+	/* If the return value of fread is smaller than length, it may
+	 * indicate an error, or that the end of file is reached, so we
+	 * need to figure out which is the case. */
 
 	if (nread < length) {
 		if (ferror(input_file.file)) {
 			file_err("read failed");
 			input_file_close();
-			return (READ_ERROR);
+			status = READ_ERROR;
 		}
-		if (feof(input_file.file)) {
-			return (READ_EOF);
+		else if (feof(input_file.file)) {
+			status = READ_EOF;
 		}
-		return (READ_SHORT);
 	}
-	return (READ_OK);
+	return (status);
 }
 
 SEEK_STATUS
@@ -181,6 +181,20 @@ input_file_rewind(void)
 		return (SEEK_NO_FILE);
 	}
 	if (fseek(input_file.file, 0, SEEK_SET)) {
+		file_err("rewind failed");
+		input_file_close();
+		return (SEEK_ERROR);
+	}
+	return (SEEK_OK);
+}
+
+SEEK_STATUS
+input_file_to_eof(void)
+{
+	if (!input_file_is_open()) {
+		return (SEEK_NO_FILE);
+	}
+	if (fseek(input_file.file, 0, SEEK_END)) {
 		file_err("rewind failed");
 		input_file_close();
 		return (SEEK_ERROR);

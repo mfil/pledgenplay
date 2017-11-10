@@ -20,7 +20,6 @@
 typedef enum {NONE, FLAC, MP3, WAVE_PCM} FILETYPE;
 typedef enum {
 	READ_OK,
-	READ_SHORT,
 	READ_EOF,
 	READ_ERROR,
 	READ_NO_FILE
@@ -36,6 +35,7 @@ void input_file_close(void);
 READ_STATUS input_file_read(void *, size_t, size_t *);
 SEEK_STATUS input_file_seek(long offset);
 SEEK_STATUS input_file_rewind(void);
+SEEK_STATUS input_file_to_eof(void);
 FILETYPE input_file_get_type(void);
 int input_file_has_id3v2_tag(void);
 int input_file_is_open(void);
