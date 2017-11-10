@@ -17,6 +17,8 @@
 #ifndef PNP_INPUT_FILE_H
 #define PNP_INPUT_FILE_H
 
+#include <sys/types.h>
+
 typedef enum {NONE, FLAC, MP3, WAVE_PCM} FILETYPE;
 typedef enum {
 	READ_OK,
