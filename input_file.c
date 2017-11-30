@@ -26,9 +26,8 @@
 #include "comm.h"
 #include "child_errors.h"
 #include "child_messages.h"
+#include "id3v2.h"
 #include "input_file.h"
-
-#define ID3V2_HEADER_LENGTH 10
 
 static struct input_file {
 	FILETYPE type;
@@ -37,7 +36,6 @@ static struct input_file {
 } input_file;
 
 static void detect_filetype(void);
-static long id3v2_length(char *);
 static void detect_id3v2_tag(void);
 static void skip_id3v2_tag(void);
 
@@ -123,8 +121,8 @@ skip_id3v2_tag() {
 	    != READ_OK) {
 		return;
 	}
-	long length = id3v2_length(id3v2_header);
-	if (input_file_seek(length) != SEEK_OK) {
+	struct id3v2_header header = parse_id3v2_header(id3v2_header);
+	if (input_file_seek((long)header.tag_length) != SEEK_OK) {
 		return;
 	}
 }
@@ -297,10 +295,4 @@ detect_filetype(void)
 		input_file.type = WAVE_PCM;
 		return;
 	}
-}
-
-static long
-id3v2_length(char header[])
-{
-	return ((header[6] << 21) + (header[7] << 14) + (header[8] << 7));
 }

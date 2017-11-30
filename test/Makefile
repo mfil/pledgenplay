@@ -8,7 +8,7 @@ LIBS=-lcheck -lutil -lsndio -liconv -lFLAC
 all: test_child_messages decode_test ipc_test
 
 child_main.o input_file.o flac.o out_sndio.o parent_main.o child_errors.o \
-    child_messages.o:
+    child_messages.o decoder.o id3v2.o:
 	cd ..; make $@
 
 mock_errors.o: mock_errors.c mock_errors.h
@@ -34,6 +34,10 @@ test_child_messages: test_child_messages.c child_messages.o mock_errors.o
 	$(CC) $(CFLAGS)  $(LDIRS) $(LIBS) -o test_child_messages \
         ../obj/child_messages.o mock_errors.o test_child_messages.c
 
-test_input_file: test_input_file.c input_file.o mock_errors.o
-	$(CC) $(CFLAGS) $(LDIRS) $(LIBS) -o test_input_file \
+test_input_file: test_input_file.c id3v2.o input_file.o mock_errors.o
+	$(CC) $(CFLAGS) $(LDIRS) $(LIBS) -o test_input_file ../obj/id3v2.o \
 	    ../obj/input_file.o mock_errors.o test_input_file.c
+
+test_decoder: test_decoder.c input_file.o id3v2.o decoder.o mock_errors.o
+	$(CC) $(CFLAGS) $(LDIRS) $(LIBS) -o test_decoder ../obj/decoder.o \
+	    ../obj/input_file.o ../obj/id3v2.o mock_errors.o test_decoder.c
