@@ -46,8 +46,10 @@ START_TEST (decoder_accepts_flac_file)
 }
 END_TEST
 
-START_TEST (decoder_extracts_id3v2_metadata) {
-	int fd = open("testdata/with_id3v2.flac", O_RDONLY);
+START_TEST (decoder_extracts_metadata) {
+	const char *filenames[2] = { "testdata/test.flac",
+	    "testdata/with_id3v2.flac" };
+	int fd = open(filenames[_i], O_RDONLY);
 	if (fd < 0) {
 		err(1, "open");
 	}
@@ -87,7 +89,7 @@ Suite
 	tcase_add_test(tc_init, decoder_accepts_flac_file);
 
 	TCase *tc_metadata = tcase_create("metadata");
-	tcase_add_test(tc_metadata, decoder_extracts_id3v2_metadata);
+	tcase_add_loop_test(tc_metadata, decoder_extracts_metadata, 0, 2);
 
 	suite_add_tcase(s, tc_init);
 	suite_add_tcase(s, tc_metadata);

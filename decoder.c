@@ -19,6 +19,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #include <FLAC/format.h>
 #include <FLAC/callback.h>
@@ -46,6 +47,10 @@ void flac_metadata_callback(const FLAC__StreamDecoder *,
     const FLAC__StreamMetadata *, void *);
 void flac_error_callback(const FLAC__StreamDecoder *,
     FLAC__StreamDecoderErrorStatus, void *);
+
+static void metadata_from_vorbis_comment(
+    const FLAC__StreamMetadata_VorbisComment *, struct metadata *);
+static void assign_metadata(char *, char *, struct metadata *);
 
 DECODER_INIT_STATUS
 decoder_initialize(int fd, OUTPUT_WRITE write_function)
@@ -96,6 +101,14 @@ decoder_initialize(int fd, OUTPUT_WRITE write_function)
 		if (flac_decoder == NULL) {
 			child_fatal("Out of memory.");
 		}
+	}
+
+	/* If no id3v2 tag was found, set up the decoder to look for a
+	 * Vorbis Comment. */
+
+	if (!input_file_has_id3v2_tag()) {
+		(void)FLAC__stream_decoder_set_metadata_respond(flac_decoder,
+		    FLAC__METADATA_TYPE_VORBIS_COMMENT);
 	}
 
 	/* Initialize the decoder instance with callbacks. */
@@ -182,6 +195,78 @@ flac_metadata_callback(const FLAC__StreamDecoder *decoder,
 		}
 	}
 	else if (stream_metadata->type == FLAC__METADATA_TYPE_VORBIS_COMMENT) {
+		metadata_from_vorbis_comment(
+		    &stream_metadata->data.vorbis_comment, cdata->metadata);
+	}
+}
+
+static void
+metadata_from_vorbis_comment(const FLAC__StreamMetadata_VorbisComment
+    *vorbis_comment, struct metadata *mdata)
+{
+	int i;
+	for (i = 0; i < vorbis_comment->num_comments; i++) {
+		const FLAC__StreamMetadata_VorbisComment_Entry *comment;
+		comment = &vorbis_comment->comments[i];
+
+		/* The comment is in KEY=VALUE form; extract KEY and
+		 * VALUE. */
+
+		char *comment_string = strndup((char *)comment->entry,
+		    comment->length);
+		if (comment_string == NULL) {
+			child_fatal("strndup");
+		}
+		char *value = comment_string;
+		char *key = strsep(&value, "=");
+
+		/* If there was no '=', value is NULL. */
+
+		if (value == NULL) {
+			child_warnx("Skipping malformed vorbis comment entry");
+		}
+
+		assign_metadata(key, value, mdata);
+		free(comment_string);
+	}
+}
+
+static void
+assign_metadata(char *key, char *value, struct metadata *mdata)
+{
+	
+	/* Select the appropriate field (if any) in mdata. */
+
+	char **field = NULL;
+	if (strcasecmp(key, "ARTIST") == 0) {
+		field = &mdata->artist;
+	}
+	else if (strcasecmp(key, "TITLE") == 0) {
+		field = &mdata->title;
+	}
+	else if (strcasecmp(key, "ALBUM") == 0) {
+		field = &mdata->album;
+	}
+	else if (strcasecmp(key, "TRACKNUMBER") == 0) {
+		field = &mdata->trackno;
+	}
+	else if (strcasecmp(key, "DATE") == 0) {
+		field = &mdata->date;
+	}
+	if (field == NULL) {
+		return;
+	}
+
+	/* If the field was already assigned, we warn and free the old
+	 * value. Then, assign the value to the field. */
+
+	if (*field != NULL) {
+		child_warnx("A metadata field is assigned multiple times.");
+		free(*field);
+	}
+	*field = strdup(value);
+	if (*field == NULL) {
+		child_fatal("strndup");
 	}
 }
 
