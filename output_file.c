@@ -24,7 +24,7 @@
 static int fd = -1;
 static int ready_to_write = 0;
 
-static OUTPUT_WRITE_STATUS raw_write(void *, size_t, size_t *);
+static OUTPUT_WRITE_STATUS raw_write(const void *, size_t, size_t *);
 static void run(void);
 static void flush(void);
 static nfds_t num_pollfds(void);
@@ -45,7 +45,7 @@ output_raw(int new_fd)
 }
 
 static OUTPUT_WRITE_STATUS
-raw_write(void *buf, size_t bytes, size_t *bytes_written)
+raw_write(const void *buf, size_t bytes, size_t *bytes_written)
 {
 	if (! ready_to_write) {
 		*bytes_written = 0;

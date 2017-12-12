@@ -29,15 +29,20 @@
 #include "decoder.h"
 #include "id3v2.h"
 #include "input_file.h"
-#include "output.h"
 
-static OUTPUT_WRITE output_write = NULL;
 static FLAC__StreamDecoder *flac_decoder = NULL;
 static struct metadata metadata = {NULL, NULL, NULL, NULL, NULL, NULL};
+static struct decoded_frame decoded_frame = {NULL, 0};
 
 struct flac_client_data {
+	int max_samples_per_frame;
+	int bits_per_sample;
+	int channels;
+	size_t max_decoded_frame_length;
 	struct metadata *metadata;
 };
+
+struct flac_client_data client_data = {0, 0, 0, 0, &metadata};
 
 FLAC__StreamDecoderReadStatus flac_read_callback(const FLAC__StreamDecoder *,
     FLAC__byte[], size_t *, void *);
@@ -48,18 +53,18 @@ void flac_metadata_callback(const FLAC__StreamDecoder *,
 void flac_error_callback(const FLAC__StreamDecoder *,
     FLAC__StreamDecoderErrorStatus, void *);
 
-static void metadata_from_vorbis_comment(
-    const FLAC__StreamMetadata_VorbisComment *, struct metadata *);
+static void read_vorbis_comment(const FLAC__StreamMetadata_VorbisComment *,
+    struct metadata *);
+static void read_stream_info(const FLAC__StreamMetadata_StreamInfo *,
+    struct flac_client_data *);
 static void assign_metadata(char *, char *, struct metadata *);
 
 DECODER_INIT_STATUS
-decoder_initialize(int fd, OUTPUT_WRITE write_function)
+decoder_initialize(int fd)
 {
 	if (set_new_input_file(fd) != NEW_FILE_OK) {
 		return (DECODER_INIT_FAIL);
 	}
-	output_write = write_function;
-
 	if (input_file_has_id3v2_tag()) {
 		unsigned char header_bytes[ID3V2_HEADER_LENGTH];
 		if (input_file_read(header_bytes, sizeof(header_bytes), NULL) !=
@@ -113,7 +118,6 @@ decoder_initialize(int fd, OUTPUT_WRITE write_function)
 
 	/* Initialize the decoder instance with callbacks. */
 
-	struct flac_client_data client_data = { &metadata };
 	FLAC__stream_decoder_init_stream(flac_decoder,
 	    flac_read_callback,
 	    NULL, /* Seek */
@@ -129,7 +133,33 @@ decoder_initialize(int fd, OUTPUT_WRITE write_function)
 
 	FLAC__stream_decoder_process_until_end_of_metadata(flac_decoder);
 
+	/* Allocate buffer for decoded samples. */
+
+	decoded_frame.data = malloc(client_data.max_decoded_frame_length);
+	if (decoded_frame.data == NULL) {
+		child_fatal("malloc");
+	}
+
 	return (DECODER_INIT_OK);
+}
+
+DECODER_DECODE_STATUS
+decoder_decode_next_frame(void)
+{
+	if (! FLAC__stream_decoder_process_single(flac_decoder)) {
+		return (DECODER_DECODE_ERROR);
+	}
+	if (FLAC__stream_decoder_get_state(flac_decoder) ==
+	    FLAC__STREAM_DECODER_END_OF_STREAM) {
+		return (DECODER_DECODE_FINISHED);
+	}
+	return (DECODER_DECODE_OK);
+}
+
+struct decoded_frame const *
+decoder_get_frame(void)
+{
+	return (&decoded_frame);
 }
 
 struct metadata const *
@@ -175,6 +205,47 @@ flac_write_callback(const FLAC__StreamDecoder *decoder,
     const FLAC__Frame *frame, const FLAC__int32 *const buffer[],
     void *client_data)
 {
+	/* The decoded audio data is presented as buffer[channel][sample].
+	 * Information about the audio data (like number of samples,
+	 * bits per sample, etc.) can be found in frame->header. */
+
+	int num_samples = frame->header.blocksize;
+	int num_channels = frame->header.channels;
+	int bits_per_sample = frame->header.bits_per_sample;
+	int bytes_per_sample = bits_per_sample/8;
+	size_t decoded_frame_length = (size_t)num_samples *
+	    (size_t)num_channels * (size_t)bytes_per_sample;
+
+	/* Check if the decoded frame exceeds the maximal size. This
+	 * obviously shouldn't happen, but let's make sure. */
+
+	struct flac_client_data *cdata = (struct flac_client_data *)client_data;
+	if (cdata->max_decoded_frame_length > decoded_frame_length) {
+		cdata->max_decoded_frame_length = decoded_frame_length;
+		free(decoded_frame.data);
+		decoded_frame.data = malloc(decoded_frame_length);
+		if (decoded_frame.data == NULL) {
+			child_fatal("malloc");
+		}
+	}
+
+	/* Set the parameters for the decoded frame. */
+
+	decoded_frame.length = decoded_frame_length;
+	decoded_frame.samples = num_samples;
+	decoded_frame.bits_per_sample = bits_per_sample;
+	decoded_frame.channels = num_channels;
+
+	int sample, channel;
+	char *decoded_frame_pos = (char *)decoded_frame.data;
+	for (sample = 0; sample < num_samples; sample++) {
+		for (channel = 0; channel < num_channels; channel++) {
+			memcpy(decoded_frame_pos, &buffer[channel][sample],
+			    bytes_per_sample);
+			decoded_frame_pos += bytes_per_sample;
+		}
+	}
+
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
 
@@ -184,25 +255,43 @@ flac_metadata_callback(const FLAC__StreamDecoder *decoder,
 {
 	struct flac_client_data *cdata = (struct flac_client_data *)client_data;
 	if (stream_metadata->type == FLAC__METADATA_TYPE_STREAMINFO) {
-		unsigned int time_in_secs =
-		    stream_metadata->data.stream_info.total_samples/
-		    stream_metadata->data.stream_info.sample_rate;
-		unsigned int time_in_mins = time_in_secs/60;
-		asprintf(&cdata->metadata->time, "%u:%02u", time_in_mins,
-		    time_in_secs % 60);
-		if (cdata->metadata->time == NULL) {
-			child_fatal("asprintf");
-		}
+		read_stream_info(&stream_metadata->data.stream_info, cdata);
 	}
 	else if (stream_metadata->type == FLAC__METADATA_TYPE_VORBIS_COMMENT) {
-		metadata_from_vorbis_comment(
-		    &stream_metadata->data.vorbis_comment, cdata->metadata);
+		read_vorbis_comment(&stream_metadata->data.vorbis_comment,
+		    cdata->metadata);
 	}
 }
 
 static void
-metadata_from_vorbis_comment(const FLAC__StreamMetadata_VorbisComment
-    *vorbis_comment, struct metadata *mdata)
+read_stream_info(const FLAC__StreamMetadata_StreamInfo *stream_info,
+    struct flac_client_data *client_data) {
+    	
+	/* Get parameters of the encoded audio. */
+
+	client_data->max_samples_per_frame = (int)stream_info->max_blocksize;
+	client_data->bits_per_sample = (int)stream_info->bits_per_sample;
+	client_data->channels = (int)stream_info->channels;
+	client_data->max_decoded_frame_length =
+	    (size_t)client_data->max_samples_per_frame *
+	    (size_t)client_data->channels *
+	    (size_t)(client_data->bits_per_sample/8);
+
+	/* Get the length of the file. */
+
+	unsigned int time_in_secs =
+	    stream_info->total_samples/stream_info->sample_rate;
+	unsigned int time_in_mins = time_in_secs/60;
+	asprintf(&client_data->metadata->time, "%u:%02u", time_in_mins,
+	    time_in_secs % 60);
+	if (client_data->metadata->time == NULL) {
+		child_fatal("asprintf");
+	}
+}
+
+static void
+read_vorbis_comment(FLAC__StreamMetadata_VorbisComment const *vorbis_comment,
+    struct metadata *mdata)
 {
 	int i;
 	for (i = 0; i < vorbis_comment->num_comments; i++) {

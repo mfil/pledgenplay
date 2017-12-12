@@ -26,7 +26,7 @@ typedef enum {OUTPUT_WRITE_OK, OUTPUT_WRITE_ERROR} OUTPUT_WRITE_STATUS;
 typedef OUTPUT_WRITE_STATUS (*OUTPUT_WRITE)(void *, size_t, size_t *);
 
 struct output {
-	OUTPUT_WRITE_STATUS (*write)(void *, size_t, size_t *);
+	OUTPUT_WRITE_STATUS (*write)(const void *, size_t, size_t *);
 	void (*run)(void);
 	void (*flush)(void);
 	nfds_t (*num_pollfds)(void);

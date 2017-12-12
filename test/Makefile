@@ -38,9 +38,11 @@ test_input_file: test_input_file.c id3v2.o input_file.o mock_errors.o
 	$(CC) $(CFLAGS) $(LDIRS) $(LIBS) -o test_input_file ../obj/id3v2.o \
 	    ../obj/input_file.o mock_errors.o test_input_file.c
 
-test_decoder: test_decoder.c input_file.o id3v2.o decoder.o mock_errors.o
+test_decoder: test_decoder.c input_file.o id3v2.o decoder.o mock_errors.o \
+    output_file.o
 	$(CC) $(CFLAGS) $(LDIRS) $(LIBS) -o test_decoder ../obj/decoder.o \
-	    ../obj/input_file.o ../obj/id3v2.o mock_errors.o test_decoder.c
+	    ../obj/input_file.o ../obj/id3v2.o mock_errors.o \
+	        ../obj/output_file.o test_decoder.c
 
 test_output_file: output_file.o mock_errors.o test_output_file.c
 	$(CC) $(CFLAGS) $(LDIRS) $(LIBS) -o test_output_file mock_errors.o \

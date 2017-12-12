@@ -16,6 +16,8 @@
 
 #include <check.h>
 
+#include <sys/stat.h>
+
 #include <err.h>
 #include <fcntl.h>
 #include <stdio.h>
@@ -25,15 +27,6 @@
 #include "../decoder.h"
 #include "mock_errors.h"
 
-OUTPUT_WRITE_STATUS
-dummy_write_cb(void *buf, size_t bytes_to_write, size_t *bytes_written)
-{
-	if (bytes_written != NULL) {
-		*bytes_written = bytes_to_write;
-	}
-	return (OUTPUT_WRITE_OK);
-}
-
 START_TEST (decoder_accepts_flac_file)
 {
 	int fd = open("testdata/test.flac", O_RDONLY);
@@ -41,7 +34,7 @@ START_TEST (decoder_accepts_flac_file)
 		err(1, "open");
 	}
 
-	DECODER_INIT_STATUS status = decoder_initialize(fd, dummy_write_cb);
+	DECODER_INIT_STATUS status = decoder_initialize(fd);
 	ck_assert_int_eq(status, DECODER_INIT_OK);
 }
 END_TEST
@@ -55,7 +48,7 @@ START_TEST (decoder_extracts_metadata) {
 	}
 
 	child_warn_called = 0;
-	DECODER_INIT_STATUS status = decoder_initialize(fd, dummy_write_cb);
+	DECODER_INIT_STATUS status = decoder_initialize(fd);
 	ck_assert_int_eq(status, DECODER_INIT_OK);
 	if (child_warn_called) {
 		child_warn_called = 0;
@@ -80,6 +73,55 @@ START_TEST (decoder_extracts_metadata) {
 }
 END_TEST
 
+START_TEST (decoder_decodes_flac)
+{
+	/* Decode a flac file to raw audio data and compare it to a file
+	 * that was produced by the standard flac tools. */
+
+	const char input_filename[] = "testdata/test.flac";
+	const char output_filename[] = "scratchspace/test.raw";
+	const char compare_filename[] = "testdata/test.raw";
+
+	/* Initialize the decoder. */
+
+	int in_fd = open(input_filename, O_RDONLY);
+	if (in_fd < 0) {
+		err(1, "open");
+	}
+	DECODER_INIT_STATUS status = decoder_initialize(in_fd);
+	ck_assert_int_eq(status, DECODER_INIT_OK);
+
+	/* Decode the file. */
+
+	FILE *out = fopen(output_filename, "w");
+	if (out == NULL) {
+		err(1, "fopen");
+	}
+	while (1) {
+		DECODER_DECODE_STATUS status = decoder_decode_next_frame();
+		if (status == DECODER_DECODE_FINISHED) {
+			break;
+		}
+		if (status == DECODER_DECODE_ERROR) {
+			errx(1, "decoder_run");
+		}
+		struct decoded_frame const *frame = decoder_get_frame();
+		fwrite(frame->data, 1, frame->length, out);
+	}
+	close(in_fd);
+	fclose(out);
+
+	char *command;
+	asprintf(&command, "cmp \"%s\" \"%s\"", output_filename,
+	    compare_filename);
+	if (command == NULL) {
+		err(1, "asprintf");
+	}
+	int cmp_rv = system(command);
+	ck_assert_int_eq(cmp_rv, 0);
+}
+END_TEST
+
 Suite
 *decoder_suite(void)
 {
@@ -91,8 +133,12 @@ Suite
 	TCase *tc_metadata = tcase_create("metadata");
 	tcase_add_loop_test(tc_metadata, decoder_extracts_metadata, 0, 2);
 
+	TCase *tc_decode = tcase_create("decode");
+	tcase_add_test(tc_decode, decoder_decodes_flac);
+
 	suite_add_tcase(s, tc_init);
 	suite_add_tcase(s, tc_metadata);
+	suite_add_tcase(s, tc_decode);
 
 	return (s);
 }

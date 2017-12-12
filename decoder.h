@@ -19,12 +19,16 @@
 
 #include <sys/types.h>
 
-#include "output.h"
-
 typedef enum {
 	DECODER_INIT_OK,
-	DECODER_INIT_FAIL,
+	DECODER_INIT_FAIL
 } DECODER_INIT_STATUS;
+
+typedef enum {
+	DECODER_DECODE_OK,
+	DECODER_DECODE_FINISHED,
+	DECODER_DECODE_ERROR
+} DECODER_DECODE_STATUS;
 
 struct metadata {
 	char *artist;
@@ -35,7 +39,17 @@ struct metadata {
 	char* trackno;
 };
 
-DECODER_INIT_STATUS decoder_initialize(int, OUTPUT_WRITE);
+struct decoded_frame {
+	void *data;
+	size_t length;
+	int samples;
+	int bits_per_sample;
+	int channels;
+};
+
+DECODER_INIT_STATUS decoder_initialize(int);
+DECODER_DECODE_STATUS decoder_decode_next_frame(void);
+struct decoded_frame const *decoder_get_frame(void);
 struct metadata const *decoder_get_metadata(void);
 
 #endif
