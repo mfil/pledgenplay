@@ -135,6 +135,11 @@ decoder_initialize(int fd)
 
 	/* Allocate buffer for decoded samples. */
 
+	if (decoded_frame.data != NULL) {
+		free(decoded_frame.data);
+		decoded_frame.data = NULL;
+		decoded_frame.length = 0;
+	}
 	decoded_frame.data = malloc(client_data.max_decoded_frame_length);
 	if (decoded_frame.data == NULL) {
 		child_fatal("malloc");
