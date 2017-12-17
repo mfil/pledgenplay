@@ -47,9 +47,18 @@ struct decoded_frame {
 	int channels;
 };
 
+struct audio_parameters {
+	size_t total_samples;
+	unsigned int channels;
+	unsigned int bits_per_sample;
+	unsigned int rate;
+	unsigned int max_samples_per_frame;
+};
+
 DECODER_INIT_STATUS decoder_initialize(int);
 DECODER_DECODE_STATUS decoder_decode_next_frame(struct decoded_frame **);
 struct metadata const *decoder_get_metadata(void);
+struct audio_parameters const *decoder_get_parameters(void);
 void free_decoded_frame(struct decoded_frame *);
 
 #endif

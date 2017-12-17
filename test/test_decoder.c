@@ -73,6 +73,31 @@ START_TEST (decoder_extracts_metadata) {
 }
 END_TEST
 
+START_TEST (decoder_extracts_audio_params)
+{
+	const char *filename = "testdata/test.flac";
+	int fd = open(filename, O_RDONLY);
+	if (fd < 0) {
+		err(1, "open");
+	}
+
+	child_warn_called = 0;
+	DECODER_INIT_STATUS status = decoder_initialize(fd);
+	ck_assert_int_eq(status, DECODER_INIT_OK);
+	if (child_warn_called) {
+		child_warn_called = 0;
+		dprintf(2, "%s\n", last_warn_message());
+	}
+
+	struct audio_parameters const *params = decoder_get_parameters();
+	ck_assert_ptr_ne(params, NULL);
+	ck_assert_int_eq(params->total_samples, 1844556);
+	ck_assert_int_eq(params->channels, 2);
+	ck_assert_int_eq(params->bits_per_sample, 16);
+	ck_assert_int_eq(params->rate, 44100);
+}
+END_TEST
+
 START_TEST (decoder_decodes_flac)
 {
 	/* Decode a flac file to raw audio data and compare it to a file
@@ -134,15 +159,13 @@ Suite
 
 	TCase *tc_init = tcase_create("initialization");
 	tcase_add_test(tc_init, decoder_accepts_flac_file);
-
-	TCase *tc_metadata = tcase_create("metadata");
-	tcase_add_loop_test(tc_metadata, decoder_extracts_metadata, 0, 2);
+	tcase_add_loop_test(tc_init, decoder_extracts_metadata, 0, 2);
+	tcase_add_test(tc_init, decoder_extracts_audio_params);
 
 	TCase *tc_decode = tcase_create("decode");
 	tcase_add_test(tc_decode, decoder_decodes_flac);
 
 	suite_add_tcase(s, tc_init);
-	suite_add_tcase(s, tc_metadata);
 	suite_add_tcase(s, tc_decode);
 
 	return (s);

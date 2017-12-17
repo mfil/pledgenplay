@@ -32,16 +32,15 @@
 
 static FLAC__StreamDecoder *flac_decoder = NULL;
 static struct metadata metadata = {NULL, NULL, NULL, NULL, NULL, NULL};
+static struct audio_parameters params = {0, 0, 0, 0, 0};
 
 struct flac_client_data {
-	int max_samples_per_frame;
-	int bits_per_sample;
-	int channels;
 	struct decoded_frame *frame;
 	struct metadata *metadata;
+	struct audio_parameters *params;
 };
 
-struct flac_client_data client_data = {0, 0, 0, NULL, &metadata};
+struct flac_client_data client_data = {NULL, &metadata, &params};
 
 FLAC__StreamDecoderReadStatus flac_read_callback(const FLAC__StreamDecoder *,
     FLAC__byte[], size_t *, void *);
@@ -157,6 +156,12 @@ decoder_get_metadata(void)
 	return (&metadata);
 }
 
+struct audio_parameters const *
+decoder_get_parameters(void)
+{
+	return (&params);
+}
+
 FLAC__StreamDecoderReadStatus
 flac_read_callback(const FLAC__StreamDecoder *decoder, FLAC__byte buffer[],
     size_t *bytes, void *client_data)
@@ -261,9 +266,11 @@ read_stream_info(const FLAC__StreamMetadata_StreamInfo *stream_info,
     	
 	/* Get parameters of the encoded audio. */
 
-	client_data->max_samples_per_frame = (int)stream_info->max_blocksize;
-	client_data->bits_per_sample = (int)stream_info->bits_per_sample;
-	client_data->channels = (int)stream_info->channels;
+	client_data->params->total_samples = (size_t)stream_info->total_samples;
+	client_data->params->channels = stream_info->channels;
+	client_data->params->bits_per_sample = stream_info->bits_per_sample;
+	client_data->params->rate = stream_info->sample_rate;
+	client_data->params->max_samples_per_frame = stream_info->max_blocksize;
 
 	/* Get the length of the file. */
 
