@@ -55,9 +55,10 @@ START_TEST (decoding_to_raw_audio_data_works)
 	if (pollfd == NULL) {
 		err(1, "malloc");
 	}
-	size_t bytes_left_in_frame = 0;
-	char const *position_in_frame = NULL;
-	while (1) {
+
+	int decoder_finished = 0;
+	int output_finished = 0;
+	while (! decoder_finished && ! output_finished) {
 		out.set_pollfds(pollfd);
 		int poll_status = poll(pollfd, num_pollfds, 0);
 		if (poll_status == -1) {
@@ -68,30 +69,32 @@ START_TEST (decoding_to_raw_audio_data_works)
 		}
 		out.check_pollfds(pollfd);
 
-		if (bytes_left_in_frame == 0) {
+		if (out.ready_for_new_frame() && ! decoder_finished) {
 			DECODER_DECODE_STATUS status =
 			    decoder_decode_next_frame();
-			if (status == DECODER_DECODE_FINISHED) {
-				break;
+			if (status == DECODER_DECODE_OK) {
+				struct decoded_frame const *frame =
+				    decoder_get_frame();
+				out.next_frame(frame);
 			}
-			if (status == DECODER_DECODE_ERROR) {
+			else if (status == DECODER_DECODE_FINISHED) {
+				decoder_finished = 1;
+			}
+			else {
 				errx(1, "decoding error");
 			}
-			struct decoded_frame const *frame = decoder_get_frame();
-			bytes_left_in_frame = frame->length;
-			position_in_frame = (char *)frame->data;
 		}
 
-		size_t bytes_written;
-		out.write(position_in_frame, bytes_left_in_frame,
-		    &bytes_written);
-		position_in_frame += bytes_written;
-		bytes_left_in_frame -= bytes_written;
-		out.run();
+		OUTPUT_RUN_STATUS status = out.run();
+		if (decoder_finished && status == OUTPUT_IDLE) {
+			output_finished = 1;
+		}
+		else if (status == OUTPUT_ERROR) {
+			errx(1, "output error");
+		}
 	}
 
 	free(pollfd);
-	out.flush();
 	close(in_fd);
 	close(out_fd);
 

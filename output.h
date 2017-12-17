@@ -21,14 +21,14 @@
 
 #include <poll.h>
 
-typedef enum {OUTPUT_WRITE_OK, OUTPUT_WRITE_ERROR} OUTPUT_WRITE_STATUS;
+#include "decoder.h"
 
-typedef OUTPUT_WRITE_STATUS (*OUTPUT_WRITE)(void *, size_t, size_t *);
+typedef enum {OUTPUT_BUSY, OUTPUT_IDLE, OUTPUT_ERROR} OUTPUT_RUN_STATUS;
 
 struct output {
-	OUTPUT_WRITE_STATUS (*write)(const void *, size_t, size_t *);
-	void (*run)(void);
-	void (*flush)(void);
+	int (*ready_for_new_frame)(void);
+	void (*next_frame)(struct decoded_frame const *);
+	OUTPUT_RUN_STATUS (*run)(void);
 	nfds_t (*num_pollfds)(void);
 	void (*set_pollfds)(struct pollfd *);
 	void (*check_pollfds)(struct pollfd *);

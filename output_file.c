@@ -19,14 +19,18 @@
 #include <unistd.h>
 
 #include "child_errors.h"
+#include "decoder.h"
 #include "output.h"
 
 static int fd = -1;
 static int ready_to_write = 0;
+static struct decoded_frame const *current_frame = NULL;
+static char const *position_in_frame = NULL;
+static size_t bytes_left_in_frame = 0;
 
-static OUTPUT_WRITE_STATUS raw_write(const void *, size_t, size_t *);
-static void run(void);
-static void flush(void);
+static int ready_for_new_frame(void);
+static void next_frame(struct decoded_frame const *);
+static OUTPUT_RUN_STATUS run(void);
 static nfds_t num_pollfds(void);
 static void set_pollfds(struct pollfd *);
 static void check_pollfds(struct pollfd *);
@@ -38,41 +42,49 @@ output_raw(int new_fd)
 		close(fd);
 	}
 	fd = new_fd;
+	current_frame = NULL;
+	position_in_frame = NULL;
+	bytes_left_in_frame = 0;
 
-	struct output out = { raw_write, run, flush, num_pollfds, set_pollfds,
-	    check_pollfds };
+	struct output out = { ready_for_new_frame, next_frame, run,
+	    num_pollfds, set_pollfds, check_pollfds };
 	return (out);
 }
 
-static OUTPUT_WRITE_STATUS
-raw_write(const void *buf, size_t bytes, size_t *bytes_written)
+static int
+ready_for_new_frame(void)
 {
-	if (! ready_to_write) {
-		*bytes_written = 0;
-		return (OUTPUT_WRITE_OK);
-	}
-
-	ssize_t write_rv;
-	write_rv = write(fd, buf, bytes);
-	if (write_rv < 0) {
-		child_warn("write");
-		return (OUTPUT_WRITE_ERROR);
-	}
-	*bytes_written = (size_t)write_rv;
-	ready_to_write = 0;
-	return (OUTPUT_WRITE_OK);
+	return (bytes_left_in_frame == 0);
 }
 
-static void
+void
+next_frame(struct decoded_frame const *frame)
+{
+	current_frame = frame;
+	bytes_left_in_frame = frame->length;
+	position_in_frame = frame->data;
+}
+
+static OUTPUT_RUN_STATUS
 run(void)
 {
-	return;
-}
+	if (ready_to_write && bytes_left_in_frame > 0) {
+		ssize_t bytes_written = write(fd, position_in_frame,
+		    bytes_left_in_frame);
+		if (bytes_written < 0) {
+			return (OUTPUT_ERROR);
+		}
+		bytes_left_in_frame -= (size_t)bytes_written;
+		position_in_frame += bytes_written;
+	}
+	ready_to_write = 0;
 
-static void
-flush(void)
-{
-	return;
+	if (bytes_left_in_frame > 0) {
+		return (OUTPUT_BUSY);
+	}
+	else {
+		return (OUTPUT_IDLE);
+	}
 }
 
 static nfds_t

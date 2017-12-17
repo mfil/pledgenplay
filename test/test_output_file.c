@@ -20,10 +20,12 @@
 
 #include <err.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
+#include "../decoder.h"
 #include "../output.h"
 
 START_TEST (output_raw_can_write_to_file)
@@ -48,10 +50,15 @@ START_TEST (output_raw_can_write_to_file)
 	}
 	out.check_pollfds(pfd);
 	char *teststr = "Hello, world!";
-	size_t bytes_written = 0;
-	out.write(teststr, strlen(teststr) + 1, &bytes_written);
-	out.flush();
-	ck_assert_int_eq(bytes_written, strlen(teststr) + 1);
+	struct decoded_frame testframe = { teststr, strlen(teststr) + 1,
+	    0, 0, 0};
+	ck_assert_int_ne(out.ready_for_new_frame(), 0);
+	out.next_frame(&testframe);
+	OUTPUT_RUN_STATUS status;
+	do {
+		status = out.run();
+		ck_assert_int_ne(status, OUTPUT_ERROR);
+	} while (status == OUTPUT_BUSY);
 
 	lseek(fd, 0, SEEK_SET);
 	char compare[strlen(teststr) + 1];
