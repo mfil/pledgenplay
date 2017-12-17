@@ -58,6 +58,7 @@ START_TEST (decoding_to_raw_audio_data_works)
 
 	int decoder_finished = 0;
 	int output_finished = 0;
+	struct decoded_frame *frame = NULL;
 	while (! decoder_finished && ! output_finished) {
 		out.set_pollfds(pollfd);
 		int poll_status = poll(pollfd, num_pollfds, 0);
@@ -69,19 +70,22 @@ START_TEST (decoding_to_raw_audio_data_works)
 		}
 		out.check_pollfds(pollfd);
 
-		if (out.ready_for_new_frame() && ! decoder_finished) {
-			DECODER_DECODE_STATUS status =
-			    decoder_decode_next_frame();
+		if (! decoder_finished && out.ready_for_new_frame()) {
+			DECODER_DECODE_STATUS status;
+			free_decoded_frame(frame);
+			status = decoder_decode_next_frame(&frame);
 			if (status == DECODER_DECODE_OK) {
-				struct decoded_frame const *frame =
-				    decoder_get_frame();
+				ck_assert_ptr_ne(frame, NULL);
 				out.next_frame(frame);
 			}
 			else if (status == DECODER_DECODE_FINISHED) {
 				decoder_finished = 1;
 			}
-			else {
+			else if (status == DECODER_DECODE_ERROR) {
 				errx(1, "decoding error");
+			}
+			else {
+				ck_assert(0 == 1);
 			}
 		}
 

@@ -97,16 +97,21 @@ START_TEST (decoder_decodes_flac)
 	if (out == NULL) {
 		err(1, "fopen");
 	}
-	while (1) {
-		DECODER_DECODE_STATUS status = decoder_decode_next_frame();
+	int decoder_finished = 0;
+	while (! decoder_finished) {
+		DECODER_DECODE_STATUS status;
+		struct decoded_frame *frame;
+		status = decoder_decode_next_frame(&frame);
 		if (status == DECODER_DECODE_FINISHED) {
-			break;
+			decoder_finished = 1;
 		}
-		if (status == DECODER_DECODE_ERROR) {
+		else if (status == DECODER_DECODE_ERROR) {
 			errx(1, "decoder_run");
 		}
-		struct decoded_frame const *frame = decoder_get_frame();
-		fwrite(frame->data, 1, frame->length, out);
+		if (frame != NULL) {
+			fwrite(frame->data, 1, frame->length, out);
+		}
+		free_decoded_frame(frame);
 	}
 	close(in_fd);
 	fclose(out);

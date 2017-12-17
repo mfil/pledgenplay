@@ -32,17 +32,16 @@
 
 static FLAC__StreamDecoder *flac_decoder = NULL;
 static struct metadata metadata = {NULL, NULL, NULL, NULL, NULL, NULL};
-static struct decoded_frame decoded_frame = {NULL, 0};
 
 struct flac_client_data {
 	int max_samples_per_frame;
 	int bits_per_sample;
 	int channels;
-	size_t max_decoded_frame_length;
+	struct decoded_frame *frame;
 	struct metadata *metadata;
 };
 
-struct flac_client_data client_data = {0, 0, 0, 0, &metadata};
+struct flac_client_data client_data = {0, 0, 0, NULL, &metadata};
 
 FLAC__StreamDecoderReadStatus flac_read_callback(const FLAC__StreamDecoder *,
     FLAC__byte[], size_t *, void *);
@@ -133,38 +132,23 @@ decoder_initialize(int fd)
 
 	FLAC__stream_decoder_process_until_end_of_metadata(flac_decoder);
 
-	/* Allocate buffer for decoded samples. */
-
-	if (decoded_frame.data != NULL) {
-		free(decoded_frame.data);
-		decoded_frame.data = NULL;
-		decoded_frame.length = 0;
-	}
-	decoded_frame.data = malloc(client_data.max_decoded_frame_length);
-	if (decoded_frame.data == NULL) {
-		child_fatal("malloc");
-	}
-
 	return (DECODER_INIT_OK);
 }
 
 DECODER_DECODE_STATUS
-decoder_decode_next_frame(void)
+decoder_decode_next_frame(struct decoded_frame **next_frame)
 {
 	if (! FLAC__stream_decoder_process_single(flac_decoder)) {
+		*next_frame = NULL;
 		return (DECODER_DECODE_ERROR);
 	}
 	if (FLAC__stream_decoder_get_state(flac_decoder) ==
 	    FLAC__STREAM_DECODER_END_OF_STREAM) {
+		*next_frame = NULL;
 		return (DECODER_DECODE_FINISHED);
 	}
+	*next_frame = client_data.frame;
 	return (DECODER_DECODE_OK);
-}
-
-struct decoded_frame const *
-decoder_get_frame(void)
-{
-	return (&decoded_frame);
 }
 
 struct metadata const *
@@ -221,28 +205,26 @@ flac_write_callback(const FLAC__StreamDecoder *decoder,
 	size_t decoded_frame_length = (size_t)num_samples *
 	    (size_t)num_channels * (size_t)bytes_per_sample;
 
-	/* Check if the decoded frame exceeds the maximal size. This
-	 * obviously shouldn't happen, but let's make sure. */
+	/* Allocate the frame. */
 
-	struct flac_client_data *cdata = (struct flac_client_data *)client_data;
-	if (cdata->max_decoded_frame_length > decoded_frame_length) {
-		cdata->max_decoded_frame_length = decoded_frame_length;
-		free(decoded_frame.data);
-		decoded_frame.data = malloc(decoded_frame_length);
-		if (decoded_frame.data == NULL) {
-			child_fatal("malloc");
-		}
+	struct decoded_frame *decoded_frame =
+	    malloc(sizeof(struct decoded_frame));
+	if (decoded_frame == NULL) {
+		child_fatal("malloc");
 	}
+	decoded_frame->data = malloc(decoded_frame_length);
+	if (decoded_frame->data == NULL) {
+		child_fatal("malloc");
+	}
+	decoded_frame->length = decoded_frame_length;
+	decoded_frame->samples = num_samples;
+	decoded_frame->bits_per_sample = bits_per_sample;
+	decoded_frame->channels = num_channels;
 
-	/* Set the parameters for the decoded frame. */
-
-	decoded_frame.length = decoded_frame_length;
-	decoded_frame.samples = num_samples;
-	decoded_frame.bits_per_sample = bits_per_sample;
-	decoded_frame.channels = num_channels;
+	/* Copy the decoded audio data, interleaving the channels. */
 
 	int sample, channel;
-	char *decoded_frame_pos = (char *)decoded_frame.data;
+	char *decoded_frame_pos = (char *)decoded_frame->data;
 	for (sample = 0; sample < num_samples; sample++) {
 		for (channel = 0; channel < num_channels; channel++) {
 			memcpy(decoded_frame_pos, &buffer[channel][sample],
@@ -250,6 +232,11 @@ flac_write_callback(const FLAC__StreamDecoder *decoder,
 			decoded_frame_pos += bytes_per_sample;
 		}
 	}
+
+	/* Make the frame available to the caller. */
+
+	struct flac_client_data *cdata = (struct flac_client_data *)client_data;
+	cdata->frame = decoded_frame;
 
 	return (FLAC__STREAM_DECODER_WRITE_STATUS_CONTINUE);
 }
@@ -277,10 +264,6 @@ read_stream_info(const FLAC__StreamMetadata_StreamInfo *stream_info,
 	client_data->max_samples_per_frame = (int)stream_info->max_blocksize;
 	client_data->bits_per_sample = (int)stream_info->bits_per_sample;
 	client_data->channels = (int)stream_info->channels;
-	client_data->max_decoded_frame_length =
-	    (size_t)client_data->max_samples_per_frame *
-	    (size_t)client_data->channels *
-	    (size_t)(client_data->bits_per_sample/8);
 
 	/* Get the length of the file. */
 
@@ -369,4 +352,13 @@ flac_error_callback(const FLAC__StreamDecoder *decoder,
     FLAC__StreamDecoderErrorStatus status, void *client_data)
 {
 	return;
+}
+
+void
+free_decoded_frame(struct decoded_frame *frame)
+{
+	if (frame != NULL) {
+		free(frame->data);
+	}
+	free(frame);
 }
