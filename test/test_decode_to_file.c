@@ -115,9 +115,7 @@ START_TEST (decoding_to_file_works)
 	free(pollfd);
 	close(in_fd);
 
-	child_warn_called = 0;
-	out.close();
-	ck_assert_int_eq(child_warn_called, 0);
+	check_for_warning(out.close());
 
 	char *decoded_files[2] = {"testdata/test.raw", "testdata/test.wav"};
 	char *command;

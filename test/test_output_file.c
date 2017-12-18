@@ -69,9 +69,7 @@ START_TEST (output_raw_can_write_to_file)
 	read(fd, compare, strlen(teststr) + 1);
 	ck_assert_str_eq(teststr, compare);
 
-	child_warn_called = 0;
-	out.close();
-	ck_assert_int_eq(child_warn_called, 0);
+	check_for_warning(out.close());
 }
 END_TEST
 
@@ -111,9 +109,7 @@ START_TEST (output_wav_writes_wav_header)
 		ck_assert_int_ne(status, OUTPUT_ERROR);
 	} while (status == OUTPUT_BUSY);
 
-	child_warn_called = 0;
-	out.close();
-	ck_assert_int_eq(child_warn_called, 0);
+	check_for_warning(out.close());
 
 	int cmp_rv = system("cmp scratchspace/wav_hdr testdata/wav_hdr");
 	ck_assert_int_eq(cmp_rv, 0);

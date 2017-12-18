@@ -38,14 +38,6 @@ set_new_file_and_check(const char *filename)
 }
 
 static void
-close_and_check()
-{
-	child_warn_called = 0;
-	input_file_close();
-	ck_assert(!child_warn_called);
-}
-
-static void
 read_and_check(void *buf, size_t length)
 {
 	size_t bytes_read;
@@ -84,7 +76,7 @@ START_TEST (input_file_determines_filetype)
 	ck_assert(!input_file_has_id3v2_tag());
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
-	close_and_check();
+	check_for_warning(input_file_close());
 }
 END_TEST
 
@@ -97,7 +89,7 @@ START_TEST (input_file_detects_id3v2_tags)
 	ck_assert(input_file_has_id3v2_tag());
 	ck_assert_int_eq(input_file_get_type(), filetypes[_i]);
 
-	close_and_check();
+	check_for_warning(input_file_close());
 }
 END_TEST
 
@@ -141,7 +133,7 @@ START_TEST (input_file_read_and_seek_works)
 	read_and_check(compare_buf, sizeof(compare_buf));
 	ck_assert_int_eq(memcmp(test_buf, compare_buf, TEST_BUF_SIZE), 0);
 
-	close_and_check();
+	check_for_warning(input_file_close());
 }
 END_TEST
 
@@ -149,7 +141,7 @@ START_TEST (no_read_after_closing)
 {
 	set_new_file_and_check("testdata/test.flac");
 
-	close_and_check();
+	check_for_warning(input_file_close());
 
 	READ_STATUS status = input_file_read(NULL, 0, NULL);
 	ck_assert_int_eq(status, READ_NO_FILE);
@@ -160,7 +152,7 @@ START_TEST (no_seek_after_closing)
 {
 	set_new_file_and_check("testdata/test.flac");
 
-	close_and_check();
+	check_for_warning(input_file_close());
 
 	SEEK_STATUS status = input_file_rewind();
 	ck_assert_int_eq(status, SEEK_NO_FILE);

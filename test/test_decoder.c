@@ -47,13 +47,9 @@ START_TEST (decoder_extracts_metadata) {
 		err(1, "open");
 	}
 
-	child_warn_called = 0;
-	DECODER_INIT_STATUS status = decoder_initialize(fd);
+	DECODER_INIT_STATUS status;
+	check_for_warning(status = decoder_initialize(fd));
 	ck_assert_int_eq(status, DECODER_INIT_OK);
-	if (child_warn_called) {
-		child_warn_called = 0;
-		dprintf(2, "%s\n", last_warn_message());
-	}
 
 	struct metadata const *mdata;
 	mdata = decoder_get_metadata();
@@ -81,13 +77,9 @@ START_TEST (decoder_extracts_audio_params)
 		err(1, "open");
 	}
 
-	child_warn_called = 0;
-	DECODER_INIT_STATUS status = decoder_initialize(fd);
+	DECODER_INIT_STATUS status;
+	check_for_warning(status = decoder_initialize(fd));
 	ck_assert_int_eq(status, DECODER_INIT_OK);
-	if (child_warn_called) {
-		child_warn_called = 0;
-		dprintf(2, "%s\n", last_warn_message());
-	}
 
 	struct audio_parameters const *params = decoder_get_parameters();
 	ck_assert_ptr_ne(params, NULL);
