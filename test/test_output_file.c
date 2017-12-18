@@ -25,6 +25,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "mock_errors.h"
+
 #include "../decoder.h"
 #include "../output.h"
 
@@ -36,7 +38,9 @@ START_TEST (output_raw_can_write_to_file)
 		err(1, "open");
 	}
 
-	struct output out = output_raw(fd);
+	struct output out;
+	OUTPUT_INIT_STATUS init_status = output_raw(fd, &out);
+	ck_assert_int_eq(init_status, OUTPUT_INIT_OK);
 	nfds_t num_pollfds = out.num_pollfds();
 	struct pollfd *pfd;
 	pfd = calloc(num_pollfds, sizeof(struct pollfd));
@@ -64,7 +68,55 @@ START_TEST (output_raw_can_write_to_file)
 	char compare[strlen(teststr) + 1];
 	read(fd, compare, strlen(teststr) + 1);
 	ck_assert_str_eq(teststr, compare);
-	close(fd);
+
+	child_warn_called = 0;
+	out.close();
+	ck_assert_int_eq(child_warn_called, 0);
+}
+END_TEST
+
+START_TEST (output_wav_writes_wav_header)
+{
+	int fd = open("scratchspace/wav_hdr", O_RDWR | O_TRUNC | O_CREAT,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	if (fd < 0) {
+		err(1, "open");
+	}
+
+	/* Set dummy parameters: 0 samples, 2 channels, 16 bit, 44.1 khz. */
+
+	struct audio_parameters params = {0, 2, 16, 44100, 0};
+
+	struct output out;
+	OUTPUT_INIT_STATUS init_status = output_wav(fd, &params, &out);
+	ck_assert_int_eq(init_status, OUTPUT_INIT_OK);
+	nfds_t num_pollfds = out.num_pollfds();
+	struct pollfd *pfd;
+	pfd = calloc(num_pollfds, sizeof(struct pollfd));
+	if (pfd == NULL) {
+		err(1, "malloc");
+	}
+	out.set_pollfds(pfd);
+
+	if (poll(pfd, num_pollfds, 0) == -1) {
+		err(1, "poll");
+	}
+	out.check_pollfds(pfd);
+	struct decoded_frame testframe = {NULL, 0, 0, 0, 0};
+	ck_assert_int_ne(out.ready_for_new_frame(), 0);
+	out.next_frame(&testframe);
+	OUTPUT_RUN_STATUS status;
+	do {
+		status = out.run();
+		ck_assert_int_ne(status, OUTPUT_ERROR);
+	} while (status == OUTPUT_BUSY);
+
+	child_warn_called = 0;
+	out.close();
+	ck_assert_int_eq(child_warn_called, 0);
+
+	int cmp_rv = system("cmp scratchspace/wav_hdr testdata/wav_hdr");
+	ck_assert_int_eq(cmp_rv, 0);
 }
 END_TEST
 
@@ -75,6 +127,7 @@ Suite
 
 	TCase *tc_writing = tcase_create("writing");
 	tcase_add_test(tc_writing, output_raw_can_write_to_file);
+	tcase_add_test(tc_writing, output_wav_writes_wav_header);
 
 	suite_add_tcase(s, tc_writing);
 

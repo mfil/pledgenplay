@@ -24,6 +24,7 @@
 #include "decoder.h"
 
 typedef enum {OUTPUT_BUSY, OUTPUT_IDLE, OUTPUT_ERROR} OUTPUT_RUN_STATUS;
+typedef enum {OUTPUT_INIT_OK, OUTPUT_INIT_ERROR} OUTPUT_INIT_STATUS;
 
 struct output {
 	int (*ready_for_new_frame)(void);
@@ -32,8 +33,11 @@ struct output {
 	nfds_t (*num_pollfds)(void);
 	void (*set_pollfds)(struct pollfd *);
 	void (*check_pollfds)(struct pollfd *);
+	void (*close)(void);
 };
 
-struct output output_raw(int fd);
+OUTPUT_INIT_STATUS output_raw(int fd, struct output *);
+OUTPUT_INIT_STATUS output_wav(int fd, struct audio_parameters const *,
+    struct output *);
 
 #endif

@@ -25,27 +25,41 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include "mock_errors.h"
+
 #include "../decoder.h"
 #include "../output.h"
 
-START_TEST (decoding_to_raw_audio_data_works)
+START_TEST (decoding_to_file_works)
 {
-	/* Initialize output. */
-
-	char *output_filename = "scratchspace/test.raw";
-	int out_fd = open(output_filename, O_WRONLY, O_CREAT | O_TRUNC,
-	    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-	if (out_fd < 0) {
-		err(1, "open");
-	}
-	struct output out = output_raw(out_fd);
-
 	/* Initialize decoder. */
 
 	char *input_filename = "testdata/test.flac";
 	int in_fd = open(input_filename, O_RDONLY);
-	DECODER_INIT_STATUS init_status = decoder_initialize(in_fd);
-	ck_assert_int_eq(init_status, DECODER_INIT_OK);
+	DECODER_INIT_STATUS dec_init_status = decoder_initialize(in_fd);
+	ck_assert_int_eq(dec_init_status, DECODER_INIT_OK);
+
+	/* Initialize output. */
+
+	char *output_filenames[2] = {"scratchspace/test.raw",
+	    "scratchspace/test.wav"};
+	int out_fd = open(output_filenames[_i], O_WRONLY, O_CREAT | O_TRUNC,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	if (out_fd < 0) {
+		err(1, "open");
+	}
+	struct output out;
+	OUTPUT_INIT_STATUS out_init_status = -1;
+	if (_i == 0) {
+		out_init_status = output_raw(out_fd, &out);
+	}
+	else if (_i == 1) {
+		struct audio_parameters const *params;
+		params = decoder_get_parameters();
+		ck_assert_ptr_ne(params, NULL);
+		out_init_status = output_wav(out_fd, params, &out);
+	}
+	ck_assert_int_eq(out_init_status, OUTPUT_INIT_OK);
 
 	/* Setupt the decoding loop. */
 
@@ -100,11 +114,15 @@ START_TEST (decoding_to_raw_audio_data_works)
 
 	free(pollfd);
 	close(in_fd);
-	close(out_fd);
 
-	char *decoded_file = "testdata/test.raw";
+	child_warn_called = 0;
+	out.close();
+	ck_assert_int_eq(child_warn_called, 0);
+
+	char *decoded_files[2] = {"testdata/test.raw", "testdata/test.wav"};
 	char *command;
-	asprintf(&command, "cmp %s %s", output_filename, decoded_file);
+	asprintf(&command, "cmp %s %s", output_filenames[_i],
+	    decoded_files[_i]);
 	if (command == NULL) {
 		err(1, "asprintf");
 	}
@@ -119,8 +137,8 @@ Suite
 {
 	Suite *s = suite_create("Test decoding to file");
 
-	TCase *tc_decode_to_raw = tcase_create("raw");
-	tcase_add_test(tc_decode_to_raw, decoding_to_raw_audio_data_works);
+	TCase *tc_decode_to_raw = tcase_create("decoding to file");
+	tcase_add_loop_test(tc_decode_to_raw, decoding_to_file_works, 0, 2);
 
 	suite_add_tcase(s, tc_decode_to_raw);
 
