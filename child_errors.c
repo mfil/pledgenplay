@@ -51,7 +51,7 @@ child_warnx(const char *message)
 }
 
 void
-file_err(struct input *in, const char *message)
+file_err(const char *message)
 {
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s: %s", getprogname(),
@@ -62,7 +62,7 @@ file_err(struct input *in, const char *message)
 }
 
 void
-file_errx(struct input *in, const char *message)
+file_errx(const char *message)
 {
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s", getprogname(), message) == -1) {
