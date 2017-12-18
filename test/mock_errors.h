@@ -1,6 +1,8 @@
 #ifndef MOCK_ERRORS_H
 #define MOCK_ERRORS_H
 
+#include <stdio.h>
+
 int child_warn_called;
 int file_err_called;
 
