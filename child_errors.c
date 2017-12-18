@@ -26,11 +26,9 @@
 void
 child_warn(const char *message)
 {
-	/*
-	 * Enqueue a warning message to the parent, formatted similar to
+	/* Enqueue a warning message to the parent, formatted similar to
 	 * warn(3): The basename of the program, the message associated with
-	 * the current errno, plus a message supplied by the caller.
-	 */
+	 * the current errno, plus a message supplied by the caller. */
 
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s: %s", getprogname(),
@@ -44,6 +42,7 @@ void
 child_warnx(const char *message)
 {
 	/* Like child_warn, but omit the message associated with errno. */
+
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s", getprogname(), message) == -1) {
 		child_fatal("asprintf");
@@ -75,12 +74,11 @@ file_errx(struct input *in, const char *message)
 __dead void
 child_fatal(const char *message)
 {
-	/*
-	 * Send a fatal error message to the parent and exit. The message
+	/* Send a fatal error message to the parent and exit. The message
 	 * is formatted similar to err(3): The basename of the program, the
 	 * message associated with the current errno, plus a message supplied
-	 * by the caller.
-	 */
+	 * by the caller. */
+
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s: %s", getprogname(),
 	    strerror(errno), message) == -1) {
@@ -108,10 +106,8 @@ child_fatalx(const char *message)
 __dead void
 ipc_error(const char *message)
 {
-	/*
- 	 * If the child process cannot communicate with the parent anymore,
-	 * try to print an error message to stderr and exit.
- 	 */
+	/* If the child process cannot communicate with the parent anymore,
+	 * try to print an error message to stderr and exit. */
 	dprintf(2, "pnp child: %s: %s\n", strerror(errno), message);
 	_exit(1);
 }
