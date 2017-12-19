@@ -30,9 +30,6 @@ struct output {
 	int (*ready_for_new_frame)(void);
 	void (*next_frame)(struct decoded_frame const *);
 	OUTPUT_RUN_STATUS (*run)(void);
-	nfds_t (*num_pollfds)(void);
-	void (*set_pollfds)(struct pollfd *);
-	void (*check_pollfds)(struct pollfd *);
 	void (*close)(void);
 };
 

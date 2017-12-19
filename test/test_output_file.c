@@ -20,7 +20,6 @@
 
 #include <err.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -41,18 +40,7 @@ START_TEST (output_raw_can_write_to_file)
 	struct output out;
 	OUTPUT_INIT_STATUS init_status = output_raw(fd, &out);
 	ck_assert_int_eq(init_status, OUTPUT_INIT_OK);
-	nfds_t num_pollfds = out.num_pollfds();
-	struct pollfd *pfd;
-	pfd = calloc(num_pollfds, sizeof(struct pollfd));
-	if (pfd == NULL) {
-		err(1, "malloc");
-	}
-	out.set_pollfds(pfd);
 
-	if (poll(pfd, num_pollfds, 0) == -1) {
-		err(1, "poll");
-	}
-	out.check_pollfds(pfd);
 	char *teststr = "Hello, world!";
 	struct decoded_frame testframe = { teststr, strlen(teststr) + 1,
 	    0, 0, 0};
@@ -88,18 +76,7 @@ START_TEST (output_wav_writes_wav_header)
 	struct output out;
 	OUTPUT_INIT_STATUS init_status = output_wav(fd, &params, &out);
 	ck_assert_int_eq(init_status, OUTPUT_INIT_OK);
-	nfds_t num_pollfds = out.num_pollfds();
-	struct pollfd *pfd;
-	pfd = calloc(num_pollfds, sizeof(struct pollfd));
-	if (pfd == NULL) {
-		err(1, "malloc");
-	}
-	out.set_pollfds(pfd);
 
-	if (poll(pfd, num_pollfds, 0) == -1) {
-		err(1, "poll");
-	}
-	out.check_pollfds(pfd);
 	struct decoded_frame testframe = {NULL, 0, 0, 0, 0};
 	ck_assert_int_ne(out.ready_for_new_frame(), 0);
 	out.next_frame(&testframe);

@@ -25,7 +25,6 @@
 #include "output.h"
 
 static int fd = -1;
-static int ready_to_write = 0;
 static struct decoded_frame const *current_frame = NULL;
 static char const *position_in_frame = NULL;
 static size_t bytes_in_file = 0;
@@ -36,9 +35,6 @@ const int wav_header_length = 44;
 static int ready_for_new_frame(void);
 static void next_frame(struct decoded_frame const *);
 static OUTPUT_RUN_STATUS run(void);
-static nfds_t num_pollfds(void);
-static void set_pollfds(struct pollfd *);
-static void check_pollfds(struct pollfd *);
 static void close_raw(void);
 static void close_wav(void);
 static void *wav_header(struct audio_parameters const *);
@@ -57,9 +53,6 @@ output_raw(int new_fd, struct output *out)
 	out->ready_for_new_frame = ready_for_new_frame;
 	out->next_frame = next_frame;
 	out->run = run;
-	out->num_pollfds = num_pollfds;
-	out->set_pollfds = set_pollfds;
-	out->check_pollfds = check_pollfds;
 	out->close = close_raw;
 
 	bytes_in_file = 0;
@@ -88,9 +81,6 @@ output_wav(int new_fd, struct audio_parameters const *params,
 	out->ready_for_new_frame = ready_for_new_frame;
 	out->next_frame = next_frame;
 	out->run = run;
-	out->num_pollfds = num_pollfds;
-	out->set_pollfds = set_pollfds;
-	out->check_pollfds = check_pollfds;
 	out->close = close_wav;
 
 	return (OUTPUT_INIT_OK);
@@ -113,7 +103,23 @@ next_frame(struct decoded_frame const *frame)
 static OUTPUT_RUN_STATUS
 run(void)
 {
-	if (ready_to_write && bytes_left_in_frame > 0) {
+	if (bytes_left_in_frame == 0) {
+		return (OUTPUT_IDLE);
+	}
+
+	/* Check if the output file is ready for writing. */
+
+	struct pollfd pfd = {fd, POLLOUT, 0};
+	int ready_to_write = 0;
+	if (poll(&pfd, 1, 0) == -1) {
+		child_warn("poll");
+		return (OUTPUT_ERROR);
+	}
+	else if (pfd.revents & POLLOUT) {
+		ready_to_write = 1;
+	}
+
+	if (ready_to_write) {
 		ssize_t bytes_written = write(fd, position_in_frame,
 		    bytes_left_in_frame);
 		if (bytes_written < 0) {
@@ -122,7 +128,6 @@ run(void)
 		bytes_left_in_frame -= (size_t)bytes_written;
 		position_in_frame += bytes_written;
 	}
-	ready_to_write = 0;
 
 	if (bytes_left_in_frame > 0) {
 		return (OUTPUT_BUSY);
@@ -130,31 +135,6 @@ run(void)
 	else {
 		return (OUTPUT_IDLE);
 	}
-}
-
-static nfds_t
-num_pollfds(void)
-{
-	return (1);
-}
-
-static void
-set_pollfds(struct pollfd *pfd)
-{
-	pfd->fd = fd;
-	pfd->events = POLLOUT;
-}
-
-static void
-check_pollfds(struct pollfd *pfd)
-{
-	if (pfd->revents & POLLOUT) {
-		ready_to_write = 1;
-	}
-	else {
-		ready_to_write = 0;
-	}
-	return;
 }
 
 static void

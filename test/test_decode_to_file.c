@@ -20,7 +20,6 @@
 
 #include <err.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,15 +27,29 @@
 #include "mock_errors.h"
 
 #include "../decoder.h"
+#include "../input_file.h"
 #include "../output.h"
+
+static void
+new_input_from_filename(const char *filename)
+{
+	int fd = open(filename, O_RDONLY);
+	if (fd < 0) {
+		err(1, "open");
+	}
+	NEW_FILE_STATUS status = set_new_input_file(fd);
+	if (status != NEW_FILE_OK) {
+		errx(1, "error in set_new_input_file");
+	}
+}
 
 START_TEST (decoding_to_file_works)
 {
-	/* Initialize decoder. */
+	/* Initialize input and decoder. */
 
 	char *input_filename = "testdata/test.flac";
-	int in_fd = open(input_filename, O_RDONLY);
-	DECODER_INIT_STATUS dec_init_status = decoder_initialize(in_fd);
+	new_input_from_filename(input_filename);
+	DECODER_INIT_STATUS dec_init_status = decoder_initialize();
 	ck_assert_int_eq(dec_init_status, DECODER_INIT_OK);
 
 	/* Initialize output. */
@@ -61,29 +74,12 @@ START_TEST (decoding_to_file_works)
 	}
 	ck_assert_int_eq(out_init_status, OUTPUT_INIT_OK);
 
-	/* Setupt the decoding loop. */
-
-	struct pollfd *pollfd;
-	nfds_t num_pollfds = out.num_pollfds();
-	pollfd = malloc(num_pollfds);
-	if (pollfd == NULL) {
-		err(1, "malloc");
-	}
+	/* Run the decoding loop. */
 
 	int decoder_finished = 0;
 	int output_finished = 0;
 	struct decoded_frame *frame = NULL;
 	while (! decoder_finished && ! output_finished) {
-		out.set_pollfds(pollfd);
-		int poll_status = poll(pollfd, num_pollfds, 0);
-		if (poll_status == -1) {
-			err(1, "poll");
-		}
-		if (poll_status == 0) {
-			continue;
-		}
-		out.check_pollfds(pollfd);
-
 		if (! decoder_finished && out.ready_for_new_frame()) {
 			DECODER_DECODE_STATUS status;
 			free_decoded_frame(frame);
@@ -112,9 +108,7 @@ START_TEST (decoding_to_file_works)
 		}
 	}
 
-	free(pollfd);
-	close(in_fd);
-
+	input_file_close();
 	check_for_warning(out.close());
 
 	char *decoded_files[2] = {"testdata/test.raw", "testdata/test.wav"};
