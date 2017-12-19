@@ -58,12 +58,8 @@ static void read_stream_info(const FLAC__StreamMetadata_StreamInfo *,
 static void assign_metadata(char *, char *, struct metadata *);
 
 DECODER_INIT_STATUS
-decoder_initialize(int fd)
+decoder_initialize(void)
 {
-	if (set_new_input_file(fd) != NEW_FILE_OK) {
-		return (DECODER_INIT_FAIL);
-	}
-
 	/* Remove old metadata. */
 
 	free(metadata.artist);
@@ -78,6 +74,8 @@ decoder_initialize(int fd)
 	metadata.time = NULL;
 	free(metadata.trackno);
 	metadata.trackno = NULL;
+
+	/* Try to get metadata from id3v2 tag. */
 
 	if (input_file_has_id3v2_tag()) {
 		unsigned char header_bytes[ID3V2_HEADER_LENGTH];

@@ -55,7 +55,7 @@ struct audio_parameters {
 	unsigned int max_samples_per_frame;
 };
 
-DECODER_INIT_STATUS decoder_initialize(int);
+DECODER_INIT_STATUS decoder_initialize(void);
 DECODER_DECODE_STATUS decoder_decode_next_frame(struct decoded_frame **);
 struct metadata const *decoder_get_metadata(void);
 struct audio_parameters const *decoder_get_parameters(void);

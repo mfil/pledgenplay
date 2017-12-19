@@ -25,30 +25,39 @@
 #include <unistd.h>
 
 #include "../decoder.h"
+#include "../input_file.h"
 #include "mock_errors.h"
 
-START_TEST (decoder_accepts_flac_file)
+static void
+new_input_from_filename(const char *filename)
 {
-	int fd = open("testdata/test.flac", O_RDONLY);
+	int fd = open(filename, O_RDONLY);
 	if (fd < 0) {
 		err(1, "open");
 	}
+	NEW_FILE_STATUS status = set_new_input_file(fd);
+	if (status != NEW_FILE_OK) {
+		errx(1, "error in set_new_input_file");
+	}
+}
 
-	DECODER_INIT_STATUS status = decoder_initialize(fd);
+START_TEST (decoder_accepts_flac_file)
+{
+	new_input_from_filename("testdata/test.flac");
+
+	DECODER_INIT_STATUS status = decoder_initialize();
 	ck_assert_int_eq(status, DECODER_INIT_OK);
+	input_file_close();
 }
 END_TEST
 
 START_TEST (decoder_extracts_metadata) {
 	const char *filenames[2] = { "testdata/test.flac",
 	    "testdata/with_id3v2.flac" };
-	int fd = open(filenames[_i], O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
+	new_input_from_filename(filenames[_i]);
 
 	DECODER_INIT_STATUS status;
-	check_for_warning(status = decoder_initialize(fd));
+	check_for_warning(status = decoder_initialize());
 	ck_assert_int_eq(status, DECODER_INIT_OK);
 
 	struct metadata const *mdata;
@@ -66,19 +75,18 @@ START_TEST (decoder_extracts_metadata) {
 	ck_assert_str_eq(mdata->date, "2014");
 	ck_assert_ptr_ne(mdata->time, NULL);
 	ck_assert_str_eq(mdata->time, "0:41");
+
+	input_file_close();
 }
 END_TEST
 
 START_TEST (decoder_extracts_audio_params)
 {
 	const char *filename = "testdata/test.flac";
-	int fd = open(filename, O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
+	new_input_from_filename(filename);
 
 	DECODER_INIT_STATUS status;
-	check_for_warning(status = decoder_initialize(fd));
+	check_for_warning(status = decoder_initialize());
 	ck_assert_int_eq(status, DECODER_INIT_OK);
 
 	struct audio_parameters const *params = decoder_get_parameters();
@@ -87,28 +95,25 @@ START_TEST (decoder_extracts_audio_params)
 	ck_assert_int_eq(params->channels, 2);
 	ck_assert_int_eq(params->bits_per_sample, 16);
 	ck_assert_int_eq(params->rate, 44100);
+
+	input_file_close();
 }
 END_TEST
 
 START_TEST (decoder_reinit_removes_metadata)
 {
 	const char *filename = "testdata/test.flac";
-	int fd = open(filename, O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
+	new_input_from_filename(filename);
 
 	DECODER_INIT_STATUS status;
-	check_for_warning(status = decoder_initialize(fd));
+	check_for_warning(status = decoder_initialize());
 	ck_assert_int_eq(status, DECODER_INIT_OK);
+	input_file_close();
 
 	const char *filename_nometa = "testdata/nometa.flac";
-	fd = open(filename_nometa, O_RDONLY);
-	if (fd < 0) {
-		err(1, "open");
-	}
+	new_input_from_filename(filename_nometa);
 
-	check_for_warning(status = decoder_initialize(fd));
+	check_for_warning(status = decoder_initialize());
 	ck_assert_int_eq(status, DECODER_INIT_OK);
 
 	struct metadata const *mdata = decoder_get_metadata();
@@ -122,7 +127,7 @@ START_TEST (decoder_reinit_removes_metadata)
 	/* We are not checking time since that always is calculated from
 	 * the STREAMINFO block. */
 
-	close(fd);
+	input_file_close();
 }
 END_TEST
 
@@ -137,11 +142,8 @@ START_TEST (decoder_decodes_flac)
 
 	/* Initialize the decoder. */
 
-	int in_fd = open(input_filename, O_RDONLY);
-	if (in_fd < 0) {
-		err(1, "open");
-	}
-	DECODER_INIT_STATUS status = decoder_initialize(in_fd);
+	new_input_from_filename(input_filename);
+	DECODER_INIT_STATUS status = decoder_initialize();
 	ck_assert_int_eq(status, DECODER_INIT_OK);
 
 	/* Decode the file. */
@@ -166,7 +168,7 @@ START_TEST (decoder_decodes_flac)
 		}
 		free_decoded_frame(frame);
 	}
-	close(in_fd);
+	input_file_close();
 	fclose(out);
 
 	char *command;
