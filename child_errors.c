@@ -36,6 +36,7 @@ child_warn(const char *message)
 		child_fatal("asprintf");
 	}
 	enqueue_message((u_int32_t)MSG_WARN, full_message);
+	free(full_message);
 }
 
 void
@@ -48,6 +49,7 @@ child_warnx(const char *message)
 		child_fatal("asprintf");
 	}
 	enqueue_message((u_int32_t)MSG_WARN, full_message);
+	free(full_message);
 }
 
 void
@@ -69,6 +71,7 @@ file_errx(const char *message)
 		ipc_error("asprintf failed.");
 	}
 	enqueue_message((u_int32_t)MSG_FILE_ERR, full_message);
+	free(full_message);
 }
 
 __dead void
@@ -85,6 +88,7 @@ child_fatal(const char *message)
 		ipc_error("asprintf failed.");
 	}
 	enqueue_message((u_int32_t)MSG_WARN, full_message);
+	free(full_message);
 	send_messages();
 	_exit(1);
 }
@@ -99,6 +103,7 @@ child_fatalx(const char *message)
 		ipc_error("asprintf failed.");
 	}
 	enqueue_message((u_int32_t)MSG_FATAL, full_message);
+	free(full_message);
 	send_messages();
 	_exit(1);
 }
