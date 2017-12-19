@@ -63,6 +63,22 @@ decoder_initialize(int fd)
 	if (set_new_input_file(fd) != NEW_FILE_OK) {
 		return (DECODER_INIT_FAIL);
 	}
+
+	/* Remove old metadata. */
+
+	free(metadata.artist);
+	metadata.artist = NULL;
+	free(metadata.title);
+	metadata.title = NULL;
+	free(metadata.album);
+	metadata.album = NULL;
+	free(metadata.date);
+	metadata.date = NULL;
+	free(metadata.time);
+	metadata.time = NULL;
+	free(metadata.trackno);
+	metadata.trackno = NULL;
+
 	if (input_file_has_id3v2_tag()) {
 		unsigned char header_bytes[ID3V2_HEADER_LENGTH];
 		if (input_file_read(header_bytes, sizeof(header_bytes), NULL) !=
@@ -95,7 +111,6 @@ decoder_initialize(int fd)
 	if (flac_decoder != NULL) {
 		if (FLAC__stream_decoder_get_state(flac_decoder) !=
 		    FLAC__STREAM_DECODER_UNINITIALIZED) {
-			child_warn("FLAC decoder was not finalized.");
 			(void)FLAC__stream_decoder_finish(flac_decoder);
 		}
 	}

@@ -90,6 +90,42 @@ START_TEST (decoder_extracts_audio_params)
 }
 END_TEST
 
+START_TEST (decoder_reinit_removes_metadata)
+{
+	const char *filename = "testdata/test.flac";
+	int fd = open(filename, O_RDONLY);
+	if (fd < 0) {
+		err(1, "open");
+	}
+
+	DECODER_INIT_STATUS status;
+	check_for_warning(status = decoder_initialize(fd));
+	ck_assert_int_eq(status, DECODER_INIT_OK);
+
+	const char *filename_nometa = "testdata/nometa.flac";
+	fd = open(filename_nometa, O_RDONLY);
+	if (fd < 0) {
+		err(1, "open");
+	}
+
+	check_for_warning(status = decoder_initialize(fd));
+	ck_assert_int_eq(status, DECODER_INIT_OK);
+
+	struct metadata const *mdata = decoder_get_metadata();
+	ck_assert_ptr_ne(mdata, NULL);
+	ck_assert_ptr_eq(mdata->artist, NULL);
+	ck_assert_ptr_eq(mdata->title, NULL);
+	ck_assert_ptr_eq(mdata->album, NULL);
+	ck_assert_ptr_eq(mdata->date, NULL);
+	ck_assert_ptr_eq(mdata->trackno, NULL);
+
+	/* We are not checking time since that always is calculated from
+	 * the STREAMINFO block. */
+
+	close(fd);
+}
+END_TEST
+
 START_TEST (decoder_decodes_flac)
 {
 	/* Decode a flac file to raw audio data and compare it to a file
@@ -153,6 +189,7 @@ Suite
 	tcase_add_test(tc_init, decoder_accepts_flac_file);
 	tcase_add_loop_test(tc_init, decoder_extracts_metadata, 0, 2);
 	tcase_add_test(tc_init, decoder_extracts_audio_params);
+	tcase_add_test(tc_init, decoder_reinit_removes_metadata);
 
 	TCase *tc_decode = tcase_create("decode");
 	tcase_add_test(tc_decode, decoder_decodes_flac);
