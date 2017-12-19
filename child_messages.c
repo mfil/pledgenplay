@@ -39,10 +39,9 @@ static int is_invalid_message_type(MESSAGE_TYPE);
 void
 initialize_ipc(int fd)
 {
-	/*
-	 * Initialize the data structures for communicating with the parent
-	 * process.
-	 */
+	/* Initialize the data structures for communicating with the parent
+	 * process. */
+
 	imsg_init(&ibuf, fd);
 }
 
@@ -50,6 +49,7 @@ void
 send_messages(void)
 {
 	/* Send the enqueued messages to the parent. */
+
 	if (imsg_flush(&ibuf) == IMSG_FAILURE) {
 		ipc_error("imsg_flush");
 	}
@@ -58,10 +58,9 @@ send_messages(void)
 void
 receive_messages(void)
 {
-	/*
-	 * Receive messages from the parent and make them available for
-	 * get_next_message().
-	 */
+	/* Receive messages from the parent and make them available for
+	 * get_next_message(). */
+
 	if (imsg_read(&ibuf) == IMSG_FAILURE) {
 		ipc_error("imsg_read");
 	}
@@ -70,12 +69,10 @@ receive_messages(void)
 void
 enqueue_message(MESSAGE_TYPE type, const char *message)
 {
-	/*
- 	 * Enqueue a message to the parent. The message has to be a
+	/* Enqueue a message to the parent. The message has to be a
 	 * null-terminated string. If it exceeds the maximum length for
 	 * imsg_compose (64 kb), the message will be ignored and a
-	 * warning will be sent to the parent.
- 	 */
+	 * warning will be sent to the parent. */
 
 	if (is_invalid_message_type(type)) {
 		child_fatalx("Invalid MESSAGE_TYPE in enqueue_message.");
@@ -103,10 +100,9 @@ enqueue_message(MESSAGE_TYPE type, const char *message)
 GET_NEXT_MESSAGE_STATUS
 get_next_message(struct message *message)
 {
-	/*
-	 * Grab the next message from the buffer and return NO_MESSAGES if
-	 * there are none.
-	 */
+	/* Grab the next message from the buffer and return NO_MESSAGES if
+	 * there are none. */
+
 	struct imsg imessage;
 	ssize_t imsg_get_status;
 	imsg_get_status = imsg_get(&ibuf, &imessage);
@@ -116,10 +112,10 @@ get_next_message(struct message *message)
 	if (imsg_get_status == IMSG_GET_NO_MESSAGES) {
 		return (0);
 	}
-	/*
-	 * Check if the message type is valid and extract additional data if
-	 * applicable.
-	 */
+
+	/* Check if the message type is valid and extract additional data if
+	 * applicable. */
+
 	switch (imessage.hdr.type) {
 	case (CMD_NEW_INPUT_FILE):
 		message->type = imessage.hdr.type;
@@ -130,7 +126,9 @@ get_next_message(struct message *message)
 	case (CMD_PLAY):
 	case (CMD_PAUSE):
 		message->type = imessage.hdr.type;
+
 		/* Set message->data to a dummy value. */
+
 		message->data.fd = -1;
 		break;
 	default:
