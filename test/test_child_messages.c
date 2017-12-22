@@ -92,7 +92,7 @@ START_TEST (get_next_message_returns_NO_MESSAGES_when_no_message_ready)
 	/* "Child" tries to get a message. */
 
 	struct message message;
-	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
+	GET_NEXT_MSG_STATUS status = get_next_message(&message);
 	ck_assert_int_eq(status, NO_MESSAGES);
 }
 END_TEST
@@ -107,9 +107,9 @@ START_TEST (get_next_message_receives_command_messages)
 
 	/* "Child" tries to get the message. */
 
-	receive_messages();
+	check_for_messages();
 	struct message message;
-	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
+	GET_NEXT_MSG_STATUS status = get_next_message(&message);
 	ck_assert_int_eq(status, GOT_MESSAGE);
 	ck_assert_int_eq(message.type, _i);
 }
@@ -122,9 +122,9 @@ START_TEST (get_next_message_receives_input_file)
 
 	/* Check if the message has arrived and has the correct type. */
 
-	receive_messages();
+	check_for_messages();
 	struct message message;
-	GET_NEXT_MESSAGE_STATUS status = get_next_message(&message);
+	GET_NEXT_MSG_STATUS status = get_next_message(&message);
 	ck_assert_int_eq(status, GOT_MESSAGE);
 	ck_assert_int_eq(message.type, CMD_NEW_INPUT_FILE);
 
@@ -149,7 +149,7 @@ START_TEST (get_next_message_raises_fatal_error_on_invalid_message_type)
 
 	/* "Child" gets message. */
 
-	receive_messages();
+	check_for_messages();
 	struct message message;
 	(void)get_next_message(&message);
 }

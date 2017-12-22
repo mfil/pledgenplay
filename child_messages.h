@@ -20,23 +20,28 @@
 #include "message_types.h"
 
 typedef enum {
+	SEND_MSG_OK,
+	SEND_MSG_SOCKET_NOT_READY,
+} SEND_MSG_STATUS;
+
+typedef enum {
 	NO_MESSAGES,
 	GOT_MESSAGE,
-} GET_NEXT_MESSAGE_STATUS;
+} GET_NEXT_MSG_STATUS;
 
 union message_data {
-	int	fd;
+	int fd;
 };
 
 struct message {
-	CMD_MESSAGE_TYPE		type;
-	union message_data		data;
+	CMD_MESSAGE_TYPE type;
+	union message_data data;
 };
 
-void			initialize_ipc(int);
-void			send_messages(void);
-void			receive_messages(void);
-void			enqueue_message(MESSAGE_TYPE, const char *);
-GET_NEXT_MESSAGE_STATUS	get_next_message(struct message *);
+void initialize_ipc(int);
+SEND_MSG_STATUS send_messages(void);
+void check_for_messages(void);
+void enqueue_message(MESSAGE_TYPE, const char *);
+GET_NEXT_MSG_STATUS get_next_message(struct message *);
 
 #endif

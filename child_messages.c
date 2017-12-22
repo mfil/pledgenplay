@@ -19,6 +19,7 @@
 #include <sys/uio.h>
 
 #include <imsg.h>
+#include <poll.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,32 +33,67 @@
 #define IMSG_GET_NO_MESSAGES		(0)
 #define IMSG_MAX_MESSAGE_LENGTH		(UINT16_MAX)
 
-static struct imsgbuf	ibuf;
+static struct imsgbuf ibuf;
+static int fd = -1;
 
 static int is_invalid_message_type(MESSAGE_TYPE);
 
 void
-initialize_ipc(int fd)
+initialize_ipc(int filedesc)
 {
 	/* Initialize the data structures for communicating with the parent
 	 * process. */
 
+	fd = filedesc;
 	imsg_init(&ibuf, fd);
 }
 
-void
+SEND_MSG_STATUS
 send_messages(void)
 {
+	/* Check if the socket is ready for writing. */
+
+	struct pollfd pfd = {fd, POLLOUT, 0};
+	if (poll(&pfd, 1, 0) == -1) {
+		ipc_error("poll");
+	}
+	if (pfd.revents & POLLERR) {
+		ipc_error("invalid file descriptor");
+	}
+	if (pfd.revents & POLLHUP) {
+		ipc_error("connection to parent process closed");
+	}
+	if (!(pfd.revents & POLLOUT)) {
+		return (SEND_MSG_SOCKET_NOT_READY);
+	}
+
 	/* Send the enqueued messages to the parent. */
 
 	if (imsg_flush(&ibuf) == IMSG_FAILURE) {
 		ipc_error("imsg_flush");
 	}
+	return (SEND_MSG_OK);
 }
 
 void
-receive_messages(void)
+check_for_messages(void)
 {
+	/* Check if the socket is ready for reading. */
+
+	struct pollfd pfd = {fd, POLLIN, 0};
+	if (poll(&pfd, 1, 0) == -1) {
+		ipc_error("poll");
+	}
+	if (pfd.revents & POLLERR) {
+		ipc_error("invalid file descriptor");
+	}
+	if (pfd.revents & POLLHUP) {
+		ipc_error("connection to parent closed.");
+	}
+	if (! (pfd.revents & POLLIN)) {
+		return;
+	}
+
 	/* Receive messages from the parent and make them available for
 	 * get_next_message(). */
 
@@ -97,7 +133,7 @@ enqueue_message(MESSAGE_TYPE type, const char *message)
 		ipc_error("Error in imsg_compose.");
 }
 
-GET_NEXT_MESSAGE_STATUS
+GET_NEXT_MSG_STATUS
 get_next_message(struct message *message)
 {
 	/* Grab the next message from the buffer and return NO_MESSAGES if
