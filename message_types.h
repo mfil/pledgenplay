@@ -30,6 +30,7 @@ typedef enum {
 
 /* Messages from child to parent. */
 typedef enum {
+	MSG_HELLO,	/* Startup */
 	MSG_ACK,	/* Acknowledge */
 	MSG_NACK,
 	MSG_FILE_ERR,	/* Error reading file */

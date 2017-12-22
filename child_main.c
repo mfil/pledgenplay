@@ -46,7 +46,7 @@ main(int argc, char **argv)
 		ipc_error("Invalid file descriptor.");
 	}
 
-	/* Check if the received file descriptor is indeed a socket */
+	/* Check if the received file descriptor is indeed a socket. */
 
 	struct stat sb;
 	if (fstat(socket, &sb) != 0) {
@@ -57,6 +57,12 @@ main(int argc, char **argv)
 	}
 
 	initialize_ipc(socket);
+
+	/* Send hello message to parent. */
+
+	enqueue_message(MSG_HELLO, "");
+	while (send_messages() == SEND_MSG_SOCKET_NOT_READY)
+		;
 
 	while (1) {
 
