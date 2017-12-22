@@ -112,6 +112,77 @@ START_TEST (child_sends_hello_message)
 }
 END_TEST
 
+int sigchld_received;
+
+void
+signal_handler(int sigraised)
+{
+	if (sigraised == SIGCHLD) {
+		sigchld_received = 1;
+	}
+}
+
+START_TEST (child_exits_on_CMD_EXIT)
+{
+	int sockets[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
+		err(1, "socketpair");
+	}
+
+	pid_t child_pid = fork();
+	if (child_pid == 0) {
+		close(sockets[0]);
+		char *socketstr;
+		asprintf(&socketstr, "%d", sockets[1]);
+		if (socketstr == NULL) {
+			_exit(1);
+		}
+		execl(child_main_path, "pnp_child", socketstr, NULL);
+	}
+
+	close(sockets[1]);
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, sockets[0]);
+
+	struct pollfd pollfd = {sockets[0], POLLIN, 0};
+	int hello_received = 0;
+	while (! hello_received) {
+		if (poll(&pollfd, 1, 0) == -1) {
+			kill(child_pid, SIGTERM);
+			exit(1);
+		}
+		if (pollfd.revents & POLLIN) {
+			if (imsg_read(&ibuf) == -1) {
+				kill(child_pid, SIGTERM);
+				exit(1);
+			}
+			struct imsg message;
+			ssize_t imsg_get_rv = imsg_get(&ibuf, &message);
+			if (imsg_get_rv == -1) {
+				kill(child_pid, SIGTERM);
+				exit(1);
+			}
+			if (imsg_get_rv > 0) {
+				int type = (int)message.hdr.type;
+				ck_assert_int_eq(type, MSG_HELLO);
+				hello_received = 1;
+			}
+		}
+	}
+
+	sigchld_received = 0;
+	signal(SIGCHLD, signal_handler);
+	imsg_compose(&ibuf, (int)CMD_EXIT, 0, getpid(), -1, NULL, 0);
+	pollfd.events = POLLOUT;
+	if (imsg_flush(&ibuf) != 0) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_flush");
+	}
+	sleep(1);
+	ck_assert_int_ne(sigchld_received, 0);
+}
+END_TEST
+
 Suite
 *test_suite(void)
 {
@@ -128,6 +199,7 @@ Suite
 	tcase_add_exit_test(tc_init, child_main_exits_if_the_fd_is_not_a_socket,
 	    1);
 	tcase_add_test(tc_init, child_sends_hello_message);
+	tcase_add_test(tc_init, child_exits_on_CMD_EXIT);
 
 	suite_add_tcase(s, tc_init);
 	
