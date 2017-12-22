@@ -106,30 +106,38 @@ void
 enqueue_message(MESSAGE_TYPE type, const char *message)
 {
 	/* Enqueue a message to the parent. The message has to be a
-	 * null-terminated string. If it exceeds the maximum length for
-	 * imsg_compose (64 kb), the message will be ignored and a
-	 * warning will be sent to the parent. */
+	 * null-terminated string, or NULL if only a message type needs
+	 * to be sent. If it exceeds the maximum length for imsg_compose
+	 * (64 kb), the message will be ignored and a warning will be
+	 * sent to the parent. */
 
 	if (is_invalid_message_type(type)) {
 		child_fatalx("Invalid MESSAGE_TYPE in enqueue_message.");
 	}
 
-	size_t message_strlen = strlen(message);
+	uint16_t message_length;
+	if (message != NULL) {
+		size_t message_strlen = strlen(message);
 
-	/* Check if the message length (including the terminating '\0')
-	 * exceeds UINT16_MAX, the maximal length for messages in
-	 * imsg_compose(). */
+		/* Check if the message length (including the terminating '\0')
+		 * exceeds UINT16_MAX, the maximal length for messages in
+ 		 * imsg_compose(). */
 
-	if (UINT16_MAX - 1 < message_strlen) {
-		child_warnx("Attempting to send over-long message.");
-		return;
+		if (UINT16_MAX - 1 < message_strlen) {
+			child_warnx("Attempting to send over-long message.");
+			return;
+		}
+
+		message_length = (uint16_t)message_strlen;
+	}
+	else {
+		message_length = 0;
 	}
 
-	/* Enqueue the message. Casting to uint16_t is ok because of the
-	 * check above. */
+	/* Enqueue the message. */
 
 	if (imsg_compose(&ibuf, (uint32_t)type, 0, getpid(), -1, message,
-	    (uint16_t)(message_strlen + 1)) == IMSG_FAILURE)
+	    message_length) == IMSG_FAILURE)
 		ipc_error("Error in imsg_compose.");
 }
 

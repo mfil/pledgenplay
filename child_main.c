@@ -60,7 +60,7 @@ main(int argc, char **argv)
 
 	/* Send hello message to parent. */
 
-	enqueue_message(MSG_HELLO, "");
+	enqueue_message(MSG_HELLO, NULL);
 	while (send_messages() == SEND_MSG_SOCKET_NOT_READY)
 		;
 
