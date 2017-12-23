@@ -20,7 +20,10 @@
 /* Command message types from parent to child. */
 
 typedef enum {
-	CMD_NEW_INPUT_FILE,	/* Send file descriptor to child */
+	CMD_SET_INPUT,
+	CMS_SET_OUTPUT_FILE_RAW,
+	CMS_SET_OUTPUT_FILE_WAV,
+	CMD_SET_OUTPUT_SNDIO,
 	CMD_EXIT,		/* Tell child to exit */
 	CMD_META,		/* Tell child to extract metadata */
 	CMD_PLAY,		/* Tell child to start playback */

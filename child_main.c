@@ -72,7 +72,7 @@ main(int argc, char **argv)
 		struct message message;
 		while (get_next_message(&message) == GOT_MESSAGE) {
 			switch (message.type) {
-			case (CMD_NEW_INPUT_FILE):
+			case (CMD_SET_INPUT):
 				set_new_input_file(message.data.fd);
 				decoder_initialize();
 			case (CMD_EXIT):

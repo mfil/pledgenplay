@@ -161,7 +161,7 @@ get_next_message(struct message *message)
 	 * applicable. */
 
 	switch (imessage.hdr.type) {
-	case (CMD_NEW_INPUT_FILE):
+	case (CMD_SET_INPUT):
 		message->type = imessage.hdr.type;
 		message->data.fd = imessage.fd;
 		break;
