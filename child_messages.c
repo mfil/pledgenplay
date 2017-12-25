@@ -128,7 +128,7 @@ enqueue_message(MESSAGE_TYPE type, const char *message)
 			return;
 		}
 
-		message_length = (uint16_t)message_strlen;
+		message_length = (uint16_t)message_strlen + 1;
 	}
 	else {
 		message_length = 0;
