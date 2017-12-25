@@ -162,14 +162,14 @@ get_next_message(struct message *message)
 
 	switch (imessage.hdr.type) {
 	case (CMD_SET_INPUT):
-		message->type = imessage.hdr.type;
+		message->type = (MESSAGE_TYPE)imessage.hdr.type;
 		message->data.fd = imessage.fd;
 		break;
 	case (CMD_EXIT):
 	case (CMD_META):
 	case (CMD_PLAY):
 	case (CMD_PAUSE):
-		message->type = imessage.hdr.type;
+		message->type = (MESSAGE_TYPE)imessage.hdr.type;
 
 		/* Set message->data to a dummy value. */
 
