@@ -37,18 +37,17 @@ START_TEST (output_raw_can_write_to_file)
 		err(1, "open");
 	}
 
-	struct output out;
-	OUTPUT_INIT_STATUS init_status = output_raw(fd, &out);
-	ck_assert_int_eq(init_status, OUTPUT_INIT_OK);
+	const struct output *out = output_raw(fd);
+	ck_assert_ptr_ne(out, OUTPUT_INIT_OK);
 
 	char *teststr = "Hello, world!";
 	struct decoded_frame testframe = { teststr, strlen(teststr) + 1,
 	    0, 0, 0};
-	ck_assert_int_ne(out.ready_for_new_frame(), 0);
-	out.next_frame(&testframe);
+	ck_assert_int_ne(out->ready_for_new_frame(), 0);
+	out->next_frame(&testframe);
 	OUTPUT_RUN_STATUS status;
 	do {
-		status = out.run();
+		status = out->run();
 		ck_assert_int_ne(status, OUTPUT_ERROR);
 	} while (status == OUTPUT_BUSY);
 
@@ -57,7 +56,7 @@ START_TEST (output_raw_can_write_to_file)
 	read(fd, compare, strlen(teststr) + 1);
 	ck_assert_str_eq(teststr, compare);
 
-	check_for_warning(out.close());
+	check_for_warning(out->close());
 }
 END_TEST
 
@@ -73,20 +72,19 @@ START_TEST (output_wav_writes_wav_header)
 
 	struct audio_parameters params = {0, 2, 16, 44100, 0};
 
-	struct output out;
-	OUTPUT_INIT_STATUS init_status = output_wav(fd, &params, &out);
-	ck_assert_int_eq(init_status, OUTPUT_INIT_OK);
+	const struct output *out = output_wav(fd, &params);
+	ck_assert_ptr_ne(out, NULL);
 
 	struct decoded_frame testframe = {NULL, 0, 0, 0, 0};
-	ck_assert_int_ne(out.ready_for_new_frame(), 0);
-	out.next_frame(&testframe);
+	ck_assert_int_ne(out->ready_for_new_frame(), 0);
+	out->next_frame(&testframe);
 	OUTPUT_RUN_STATUS status;
 	do {
-		status = out.run();
+		status = out->run();
 		ck_assert_int_ne(status, OUTPUT_ERROR);
 	} while (status == OUTPUT_BUSY);
 
-	check_for_warning(out.close());
+	check_for_warning(out->close());
 
 	int cmp_rv = system("cmp scratchspace/wav_hdr testdata/wav_hdr");
 	ck_assert_int_eq(cmp_rv, 0);

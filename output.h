@@ -24,17 +24,15 @@
 #include "decoder.h"
 
 typedef enum {OUTPUT_BUSY, OUTPUT_IDLE, OUTPUT_ERROR} OUTPUT_RUN_STATUS;
-typedef enum {OUTPUT_INIT_OK, OUTPUT_INIT_ERROR} OUTPUT_INIT_STATUS;
 
 struct output {
 	int (*ready_for_new_frame)(void);
-	void (*next_frame)(struct decoded_frame const *);
+	void (*next_frame)(const struct decoded_frame *);
 	OUTPUT_RUN_STATUS (*run)(void);
 	void (*close)(void);
 };
 
-OUTPUT_INIT_STATUS output_raw(int fd, struct output *);
-OUTPUT_INIT_STATUS output_wav(int fd, struct audio_parameters const *,
-    struct output *);
+const struct output *output_raw(int fd);
+const struct output *output_wav(int fd, const struct audio_parameters *);
 
 #endif

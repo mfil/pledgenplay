@@ -30,8 +30,6 @@ static char const *position_in_frame = NULL;
 static size_t bytes_in_file = 0;
 static size_t bytes_left_in_frame = 0;
 
-const int wav_header_length = 44;
-
 static int ready_for_new_frame(void);
 static void next_frame(struct decoded_frame const *);
 static OUTPUT_RUN_STATUS run(void);
@@ -39,8 +37,24 @@ static void close_raw(void);
 static void close_wav(void);
 static void *wav_header(struct audio_parameters const *);
 
-OUTPUT_INIT_STATUS
-output_raw(int new_fd, struct output *out)
+const struct output output_raw_functions = {
+	ready_for_new_frame,
+	next_frame,
+	run,
+	close_raw,
+};
+
+const struct output output_wav_functions = {
+	ready_for_new_frame,
+	next_frame,
+	run,
+	close_wav,
+};
+
+const int wav_header_length = 44;
+
+const struct output *
+output_raw(int new_fd)
 {
 	if (fd != -1) {
 		close(fd);
@@ -50,18 +64,12 @@ output_raw(int new_fd, struct output *out)
 	position_in_frame = NULL;
 	bytes_left_in_frame = 0;
 
-	out->ready_for_new_frame = ready_for_new_frame;
-	out->next_frame = next_frame;
-	out->run = run;
-	out->close = close_raw;
-
 	bytes_in_file = 0;
-	return (OUTPUT_INIT_OK);
+	return (&output_raw_functions);
 }
 
-OUTPUT_INIT_STATUS
-output_wav(int new_fd, struct audio_parameters const *params,
-    struct output *out)
+const struct output *
+output_wav(int new_fd, struct audio_parameters const *params)
 {
 	if (fd != -1) {
 		close(fd);
@@ -74,16 +82,11 @@ output_wav(int new_fd, struct audio_parameters const *params,
 	ssize_t bytes_written = write(fd, wav_header(params),
 	    wav_header_length);
 	if (bytes_written < wav_header_length) {
-		return (OUTPUT_INIT_ERROR);
+		return (NULL);
 	}
 	bytes_in_file = wav_header_length;
 
-	out->ready_for_new_frame = ready_for_new_frame;
-	out->next_frame = next_frame;
-	out->run = run;
-	out->close = close_wav;
-
-	return (OUTPUT_INIT_OK);
+	return (&output_wav_functions);
 }
 
 static int

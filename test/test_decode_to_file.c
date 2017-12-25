@@ -61,18 +61,17 @@ START_TEST (decoding_to_file_works)
 	if (out_fd < 0) {
 		err(1, "open");
 	}
-	struct output out;
-	OUTPUT_INIT_STATUS out_init_status = -1;
+	const struct output *out = NULL;
 	if (_i == 0) {
-		out_init_status = output_raw(out_fd, &out);
+		out = output_raw(out_fd);
 	}
 	else if (_i == 1) {
 		struct audio_parameters const *params;
 		params = decoder_get_parameters();
 		ck_assert_ptr_ne(params, NULL);
-		out_init_status = output_wav(out_fd, params, &out);
+		out = output_wav(out_fd, params);
 	}
-	ck_assert_int_eq(out_init_status, OUTPUT_INIT_OK);
+	ck_assert_ptr_ne(out, NULL);
 
 	/* Run the decoding loop. */
 
@@ -80,13 +79,13 @@ START_TEST (decoding_to_file_works)
 	int output_finished = 0;
 	struct decoded_frame *frame = NULL;
 	while (! decoder_finished && ! output_finished) {
-		if (! decoder_finished && out.ready_for_new_frame()) {
+		if (! decoder_finished && out->ready_for_new_frame()) {
 			DECODER_DECODE_STATUS status;
 			free_decoded_frame(frame);
 			status = decoder_decode_next_frame(&frame);
 			if (status == DECODER_DECODE_OK) {
 				ck_assert_ptr_ne(frame, NULL);
-				out.next_frame(frame);
+				out->next_frame(frame);
 			}
 			else if (status == DECODER_DECODE_FINISHED) {
 				decoder_finished = 1;
@@ -99,7 +98,7 @@ START_TEST (decoding_to_file_works)
 			}
 		}
 
-		OUTPUT_RUN_STATUS status = out.run();
+		OUTPUT_RUN_STATUS status = out->run();
 		if (decoder_finished && status == OUTPUT_IDLE) {
 			output_finished = 1;
 		}
@@ -109,7 +108,7 @@ START_TEST (decoding_to_file_works)
 	}
 
 	input_file_close();
-	check_for_warning(out.close());
+	check_for_warning(out->close());
 
 	char *decoded_files[2] = {"testdata/test.raw", "testdata/test.wav"};
 	char *command;
