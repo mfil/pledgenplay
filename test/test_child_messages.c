@@ -101,7 +101,7 @@ START_TEST (get_next_message_receives_command_messages)
 {
 	prepare_mock_ipc();
 
-	/* _i loops over all valid message types (without associated files). */
+	/* _i loops over all valid message types. */
 
 	parent_sends_message(_i);
 
@@ -250,7 +250,7 @@ Suite
 	    get_next_message_returns_NO_MESSAGES_when_no_message_ready);
 	tcase_add_loop_test(tc_get_next_message,
 	    get_next_message_receives_command_messages,
-	    1, CMD_MESSAGE_SENTINEL);
+	    0, CMD_MESSAGE_SENTINEL);
 	tcase_add_test(tc_get_next_message,
 	    get_next_message_receives_input_file);
 	tcase_add_exit_test(tc_get_next_message,

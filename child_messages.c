@@ -162,9 +162,12 @@ get_next_message(struct message *message)
 
 	switch (imessage.hdr.type) {
 	case (CMD_SET_INPUT):
+	case (CMD_SET_OUTPUT_FILE_RAW):
+	case (CMD_SET_OUTPUT_FILE_WAV):
 		message->type = (MESSAGE_TYPE)imessage.hdr.type;
 		message->data.fd = imessage.fd;
 		break;
+	case (CMD_SET_OUTPUT_SNDIO):
 	case (CMD_EXIT):
 	case (CMD_META):
 	case (CMD_PLAY):
