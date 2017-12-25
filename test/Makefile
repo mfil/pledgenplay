@@ -4,8 +4,13 @@ STD=c99
 IDIRS=-I/usr/local/include -I..
 LDIRS=-L/usr/local/lib
 LIBS=-lcheck -lutil -lsndio -liconv -lFLAC
+TESTS=test_child_main test_child_messages test_decoder test_decode_to_file \
+    test_input_file test_output_file
 
-all: test_child_messages decode_test ipc_test
+all: $(TESTS)
+
+run-all: $(TESTS)
+	for test in $(TESTS); do ./$${test}; done
 
 child_main.o input_file.o flac.o out_sndio.o parent_main.o child_errors.o \
     child_messages.o decoder.o id3v2.o output_file.o pnp_child:
