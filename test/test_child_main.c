@@ -114,31 +114,7 @@ START_TEST (child_sends_hello_message)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, sockets[0]);
 
-	struct pollfd pollfd = {sockets[0], POLLIN, 0};
-	int hello_received = 0;
-	while (! hello_received) {
-		if (poll(&pollfd, 1, 0) == -1) {
-			kill(child_pid, SIGTERM);
-			exit(1);
-		}
-		if (pollfd.revents & POLLIN) {
-			if (imsg_read(&ibuf) == -1) {
-				kill(child_pid, SIGTERM);
-				exit(1);
-			}
-			struct imsg message;
-			ssize_t imsg_get_rv = imsg_get(&ibuf, &message);
-			if (imsg_get_rv == -1) {
-				kill(child_pid, SIGTERM);
-				exit(1);
-			}
-			if (imsg_get_rv > 0) {
-				int type = (int)message.hdr.type;
-				ck_assert_int_eq(type, MSG_HELLO);
-				hello_received = 1;
-			}
-		}
-	}
+	wait_for_hello(child_pid, sockets[0], &ibuf);
 
 	kill(child_pid, SIGTERM);
 }
