@@ -23,9 +23,19 @@
 
 #include "decoder.h"
 
-typedef enum {OUTPUT_BUSY, OUTPUT_IDLE, OUTPUT_ERROR} OUTPUT_RUN_STATUS;
+typedef enum {
+	OUTPUT_BUSY,
+	OUTPUT_IDLE,
+	OUTPUT_ERROR,
+} OUTPUT_RUN_STATUS;
+
+typedef enum {
+	OUTPUT_PARAMETERS_OK,
+	OUTPUT_PARAMETERS_ERROR,
+} OUTPUT_PARAM_STATUS;
 
 struct output {
+	OUTPUT_PARAM_STATUS (*set_parameters)(const struct audio_parameters *);
 	int (*ready_for_new_frame)(void);
 	void (*next_frame)(const struct decoded_frame *);
 	OUTPUT_RUN_STATUS (*run)(void);
@@ -33,6 +43,6 @@ struct output {
 };
 
 const struct output *output_raw(int fd);
-const struct output *output_wav(int fd, const struct audio_parameters *);
+const struct output *output_wav(int fd);
 
 #endif

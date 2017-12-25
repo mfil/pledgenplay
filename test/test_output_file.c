@@ -72,8 +72,9 @@ START_TEST (output_wav_writes_wav_header)
 
 	struct audio_parameters params = {0, 2, 16, 44100, 0};
 
-	const struct output *out = output_wav(fd, &params);
+	const struct output *out = output_wav(fd);
 	ck_assert_ptr_ne(out, NULL);
+	ck_assert_int_eq(out->set_parameters(&params), OUTPUT_PARAMETERS_OK);
 
 	struct decoded_frame testframe = {NULL, 0, 0, 0, 0};
 	ck_assert_int_ne(out->ready_for_new_frame(), 0);

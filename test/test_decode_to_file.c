@@ -66,12 +66,15 @@ START_TEST (decoding_to_file_works)
 		out = output_raw(out_fd);
 	}
 	else if (_i == 1) {
-		struct audio_parameters const *params;
-		params = decoder_get_parameters();
-		ck_assert_ptr_ne(params, NULL);
-		out = output_wav(out_fd, params);
+		out = output_wav(out_fd);
 	}
 	ck_assert_ptr_ne(out, NULL);
+
+	const struct audio_parameters *params = decoder_get_parameters();
+	if (params == NULL) {
+		errx(1, "Decoder failed to provide parameters.");
+	}
+	ck_assert_int_eq(out->set_parameters(params), OUTPUT_PARAMETERS_OK);
 
 	/* Run the decoding loop. */
 

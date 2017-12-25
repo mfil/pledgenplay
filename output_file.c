@@ -25,11 +25,14 @@
 #include "output.h"
 
 static int fd = -1;
-static struct decoded_frame const *current_frame = NULL;
-static char const *position_in_frame = NULL;
+const static struct decoded_frame *current_frame = NULL;
+const static char *position_in_frame = NULL;
 static size_t bytes_in_file = 0;
 static size_t bytes_left_in_frame = 0;
+static int needs_parameters = 1;
 
+static OUTPUT_PARAM_STATUS set_parameters_raw(const struct audio_parameters *);
+static OUTPUT_PARAM_STATUS set_parameters_wav(const struct audio_parameters *);
 static int ready_for_new_frame(void);
 static void next_frame(struct decoded_frame const *);
 static OUTPUT_RUN_STATUS run(void);
@@ -38,6 +41,7 @@ static void close_wav(void);
 static void *wav_header(struct audio_parameters const *);
 
 const struct output output_raw_functions = {
+	set_parameters_raw,
 	ready_for_new_frame,
 	next_frame,
 	run,
@@ -45,6 +49,7 @@ const struct output output_raw_functions = {
 };
 
 const struct output output_wav_functions = {
+	set_parameters_wav,
 	ready_for_new_frame,
 	next_frame,
 	run,
@@ -63,13 +68,13 @@ output_raw(int new_fd)
 	current_frame = NULL;
 	position_in_frame = NULL;
 	bytes_left_in_frame = 0;
-
+	needs_parameters = 0;
 	bytes_in_file = 0;
 	return (&output_raw_functions);
 }
 
 const struct output *
-output_wav(int new_fd, struct audio_parameters const *params)
+output_wav(int new_fd)
 {
 	if (fd != -1) {
 		close(fd);
@@ -78,15 +83,33 @@ output_wav(int new_fd, struct audio_parameters const *params)
 	current_frame = NULL;
 	position_in_frame = NULL;
 	bytes_left_in_frame = 0;
+	needs_parameters = 1;
+	return (&output_wav_functions);
+}
+
+static OUTPUT_PARAM_STATUS
+set_parameters_raw(const struct audio_parameters *params)
+{
+	return (OUTPUT_PARAMETERS_OK);
+}
+
+static OUTPUT_PARAM_STATUS
+set_parameters_wav(const struct audio_parameters *params)
+{
+	if (! needs_parameters) {
+		child_warnx("Attempting to set parameters for wav file "
+		    "output multiple times.");
+		return (OUTPUT_PARAMETERS_ERROR);
+	}
 
 	ssize_t bytes_written = write(fd, wav_header(params),
 	    wav_header_length);
 	if (bytes_written < wav_header_length) {
-		return (NULL);
+		return (OUTPUT_PARAMETERS_ERROR);
 	}
 	bytes_in_file = wav_header_length;
-
-	return (&output_wav_functions);
+	needs_parameters = 0;
+	return (OUTPUT_PARAMETERS_OK);
 }
 
 static int
@@ -106,6 +129,10 @@ next_frame(struct decoded_frame const *frame)
 static OUTPUT_RUN_STATUS
 run(void)
 {
+	if (needs_parameters) {
+		child_warnx("Can't run the output without parameters.");
+		return (OUTPUT_ERROR);
+	}
 	if (bytes_left_in_frame == 0) {
 		return (OUTPUT_IDLE);
 	}
