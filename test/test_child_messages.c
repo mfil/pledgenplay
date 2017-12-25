@@ -76,7 +76,7 @@ parent_sends_new_input_file(char filename[])
 	if (fd == -1) {
 		err(1, "open");
 	}
-	if (imsg_compose(&ibuf, (uint32_t)CMD_NEW_INPUT_FILE, 0, getpid(), fd,
+	if (imsg_compose(&ibuf, (uint32_t)CMD_SET_INPUT, 0, getpid(), fd,
 	    NULL, 0) == -1) {
 		err(1, "imsg_compose");
 	}
@@ -126,7 +126,7 @@ START_TEST (get_next_message_receives_input_file)
 	struct message message;
 	GET_NEXT_MSG_STATUS status = get_next_message(&message);
 	ck_assert_int_eq(status, GOT_MESSAGE);
-	ck_assert_int_eq(message.type, CMD_NEW_INPUT_FILE);
+	ck_assert_int_eq(message.type, CMD_SET_INPUT);
 
 	/*
 	 * Check if the received fd can be read. It should start with the magic
@@ -158,7 +158,7 @@ END_TEST
 START_TEST (enqueue_message_raises_fatal_error_for_invalid_type)
 {
 	prepare_mock_ipc();
-	enqueue_message(MSG_SENTINEL, "");
+	enqueue_message(MSG_SENTINEL, NULL);
 }
 END_TEST
 
