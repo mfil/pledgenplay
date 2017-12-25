@@ -38,7 +38,7 @@ START_TEST (output_raw_can_write_to_file)
 	}
 
 	const struct output *out = output_raw(fd);
-	ck_assert_ptr_ne(out, OUTPUT_INIT_OK);
+	ck_assert_ptr_ne(out, NULL);
 
 	char *teststr = "Hello, world!";
 	struct decoded_frame testframe = { teststr, strlen(teststr) + 1,
