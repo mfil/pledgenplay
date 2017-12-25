@@ -130,7 +130,9 @@ static OUTPUT_RUN_STATUS
 run(void)
 {
 	if (needs_parameters) {
-		child_warnx("Can't run the output without parameters.");
+
+		/* TODO: Inform parent that output doesn't work. */
+
 		return (OUTPUT_ERROR);
 	}
 	if (bytes_left_in_frame == 0) {
