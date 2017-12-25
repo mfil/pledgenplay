@@ -17,6 +17,7 @@
 #include <check.h>
 
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/queue.h>
 #include <sys/uio.h>
@@ -37,7 +38,8 @@
 const char *child_main_path = "../obj/pnp_child";
 
 static void
-wait_for_hello(pid_t child_pid, int socket, struct imsgbuf *ibuf)
+wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
+    struct imsgbuf *ibuf)
 {
 	struct pollfd pollfd = {socket, POLLIN, 0};
 	int hello_received = 0;
@@ -59,10 +61,14 @@ wait_for_hello(pid_t child_pid, int socket, struct imsgbuf *ibuf)
 			}
 			if (imsg_get_rv > 0) {
 				int type = (int)message.hdr.type;
-				ck_assert_int_eq(type, MSG_HELLO);
+				if (type == MSG_FATAL) {
+					errx(1, "fatal error: %s",
+					    (char *)message.data);
+				}
+				ck_assert_int_eq(type, expected_type);
 				hello_received = 1;
+				imsg_free(&message);
 			}
-			imsg_free(&message);
 		}
 	}
 }
@@ -114,7 +120,7 @@ START_TEST (child_sends_hello_message)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, sockets[0]);
 
-	wait_for_hello(child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_HELLO, child_pid, sockets[0], &ibuf);
 
 	kill(child_pid, SIGTERM);
 }
@@ -152,7 +158,7 @@ START_TEST (child_exits_on_CMD_EXIT)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, sockets[0]);
 
-	wait_for_hello(child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_HELLO, child_pid, sockets[0], &ibuf);
 
 	sigchld_received = 0;
 	signal(SIGCHLD, signal_handler);
@@ -173,6 +179,17 @@ END_TEST
 
 START_TEST (child_main_decodes_to_raw_audio_file)
 {
+	int in_fd = open("testdata/test.flac", O_RDONLY);
+	if (in_fd == -1) {
+		err(1, "open");
+	}
+	int out_fd = open("scratchspace/test.raw",
+	    O_WRONLY | O_CREAT | O_TRUNC,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	if (out_fd == -1) {
+		err(1, "open");
+	}
+
 	int sockets[2];
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
 		err(1, "socketpair");
@@ -193,12 +210,51 @@ START_TEST (child_main_decodes_to_raw_audio_file)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, sockets[0]);
 
-	wait_for_hello(child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_HELLO, child_pid, sockets[0], &ibuf);
 
-	int in_fd = open("testdata/test.flac", O_RDONLY);
-	if (in_fd == -1) {
-		err(1, "open");
+	int rv;
+	rv = imsg_compose(&ibuf, (uint32_t)CMD_SET_INPUT, 0, getpid(), in_fd,
+	    NULL, 0);
+	if (rv != 1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_compose");
 	}
+	rv = imsg_flush(&ibuf);
+	if (rv != 0) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_flush");
+	}
+
+	rv = imsg_compose(&ibuf, (uint32_t)CMD_SET_OUTPUT_FILE_RAW, 0, getpid(),
+	    out_fd, NULL, 0);
+	if (rv == -1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_compose");
+	}
+	rv = imsg_flush(&ibuf);
+	if (rv == -1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_flush");
+	}
+
+	rv = imsg_compose(&ibuf, (uint32_t)CMD_PLAY, 0, getpid(), -1, NULL, 0);
+	if (rv == -1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_compose");
+	}
+	rv = imsg_flush(&ibuf);
+	if (rv == -1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_flush");
+	}
+
+	wait_for_message(MSG_DONE, child_pid, sockets[0], &ibuf);
+
+	kill(child_pid, SIGTERM);
+
+	int cmp_rv;
+	cmp_rv = system("cmp testdata/test.raw scratchspace/test.raw");
+	ck_assert_int_eq(cmp_rv, 0);
 }
 END_TEST
 
@@ -206,7 +262,7 @@ Suite
 *test_suite(void)
 {
 	Suite *s;
-	TCase *tc_init;
+	TCase *tc_init, *tc_decode;
 
 	s = suite_create("child main");
 	tc_init = tcase_create("Initialization");
@@ -220,7 +276,11 @@ Suite
 	tcase_add_test(tc_init, child_sends_hello_message);
 	tcase_add_test(tc_init, child_exits_on_CMD_EXIT);
 
+	tc_decode = tcase_create("Decoding");
+	tcase_add_test(tc_decode, child_main_decodes_to_raw_audio_file);
+
 	suite_add_tcase(s, tc_init);
+	suite_add_tcase(s, tc_decode);
 	
 	return (s);
 }

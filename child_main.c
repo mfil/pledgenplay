@@ -27,6 +27,7 @@
 #include "decoder.h"
 #include "input_file.h"
 #include "message_types.h"
+#include "output.h"
 
 int
 main(int argc, char **argv)
@@ -64,6 +65,10 @@ main(int argc, char **argv)
 	while (send_messages() == SEND_MSG_SOCKET_NOT_READY)
 		;
 
+	const struct output *out = NULL;
+	int playing = 0;
+	int decoder_finished = 0;
+	struct decoded_frame *frame = NULL;
 	while (1) {
 
 		/* Process messages from parent. */
@@ -72,15 +77,26 @@ main(int argc, char **argv)
 		struct message message;
 		while (get_next_message(&message) == GOT_MESSAGE) {
 			switch (message.type) {
-			case (CMD_SET_INPUT):
-				set_new_input_file(message.data.fd);
-				decoder_initialize();
 			case (CMD_EXIT):
 				_exit(0);
 				break;
+			case (CMD_SET_INPUT):
+				set_new_input_file(message.data.fd);
+				decoder_initialize();
+				break;
+			case (CMD_SET_OUTPUT_FILE_RAW):
+				out = output_raw(message.data.fd);
+				break;
+			case (CMD_SET_OUTPUT_FILE_WAV):
+			case (CMD_SET_OUTPUT_SNDIO):
+				break;
 			case (CMD_META):
+				break;
 			case (CMD_PLAY):
+				playing = 1;
+				break;
 			case (CMD_PAUSE):
+				break;
 			default:
 				child_fatalx("Received invalid message.");
 				break;
@@ -90,5 +106,34 @@ main(int argc, char **argv)
 		/* Send messages to parent. */
 
 		send_messages();
+
+		if (playing) {
+			if (! decoder_finished && out->ready_for_new_frame()) {
+				free_decoded_frame(frame);
+				DECODER_DECODE_STATUS status;
+				status = decoder_decode_next_frame(&frame);
+				if (status == DECODER_DECODE_FINISHED) {
+					decoder_finished = 1;
+				}
+				else if (status == DECODER_DECODE_ERROR) {
+					child_fatalx("decoding error");
+				}
+				else {
+					out->next_frame(frame);
+				}
+			}
+
+			OUTPUT_RUN_STATUS status;
+			status = out->run();
+			if (status == OUTPUT_ERROR) {
+				child_fatalx("output error");
+			}
+
+			if (decoder_finished && status == OUTPUT_IDLE) {
+				playing = 0;
+				out->close();
+				enqueue_message(MSG_DONE, NULL);
+			}
+		}
 	}
 }
