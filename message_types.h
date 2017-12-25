@@ -21,8 +21,8 @@
 
 typedef enum {
 	CMD_SET_INPUT,
-	CMS_SET_OUTPUT_FILE_RAW,
-	CMS_SET_OUTPUT_FILE_WAV,
+	CMD_SET_OUTPUT_FILE_RAW,
+	CMD_SET_OUTPUT_FILE_WAV,
 	CMD_SET_OUTPUT_SNDIO,
 	CMD_EXIT,		/* Tell child to exit */
 	CMD_META,		/* Tell child to extract metadata */
