@@ -37,6 +37,26 @@
 
 const char *const pnp_child_path = "../obj/pnp_child";
 
+int
+open_input_file(const char *filename)
+{
+	int in_fd = open(filename, O_RDONLY);
+	if (in_fd == -1) {
+		err(1, "open");
+	}
+}
+
+int
+open_output_file(const char *filename)
+{
+	int out_fd = open("scratchspace/test.raw",
+	    O_WRONLY | O_CREAT | O_TRUNC,
+	    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
+	if (out_fd == -1) {
+		err(1, "open");
+	}
+}
+
 void
 start_pnp_child(pid_t *child_pid, int *socket)
 {
@@ -101,6 +121,26 @@ wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
 	}
 }
 
+void
+enqueue_command(struct imsgbuf *ibuf, CMD_MESSAGE_TYPE type, int fd_to_send,
+    pid_t child_pid)
+{
+	if (imsg_compose(ibuf, (uint32_t)type, 0, getpid(), fd_to_send, NULL,
+	    0) == -1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_compose");
+	}
+}
+
+void
+send_commands(struct imsgbuf *ibuf, pid_t child_pid)
+{
+	if (imsg_flush(ibuf) == -1) {
+		kill(child_pid, SIGTERM);
+		err(1, "imsg_flush");
+	}
+}
+
 START_TEST (child_main_exits_if_no_filedescriptor_is_given)
 {
 	execl(pnp_child_path, "pnp_child", NULL);
@@ -116,7 +156,7 @@ END_TEST
 
 START_TEST (child_main_exits_if_the_fd_is_not_a_socket)
 {
-	int fd = open("testdata/test.flac", O_RDONLY);
+	int fd = open_input_file("testdata/test.flac");
 	char *fdstr;
 	asprintf(&fdstr, "%d", fd);
 	if (fdstr == NULL) {
@@ -143,7 +183,7 @@ END_TEST
 
 int sigchld_received;
 
-void
+static void
 signal_handler(int sigraised)
 {
 	if (sigraised == SIGCHLD) {
@@ -164,12 +204,11 @@ START_TEST (child_exits_on_CMD_EXIT)
 
 	sigchld_received = 0;
 	signal(SIGCHLD, signal_handler);
-	imsg_compose(&ibuf, (int)CMD_EXIT, 0, getpid(), -1, NULL, 0);
-	if (imsg_flush(&ibuf) != 0) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_flush");
-	}
+	enqueue_command(&ibuf, CMD_EXIT, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
 	sleep(1);
+
 	ck_assert_int_ne(sigchld_received, 0);
 	int child_status;
 	pid_t wait_rv = waitpid(child_pid, &child_status, 0);
@@ -181,16 +220,8 @@ END_TEST
 
 START_TEST (child_main_decodes_to_raw_audio_file)
 {
-	int in_fd = open("testdata/test.flac", O_RDONLY);
-	if (in_fd == -1) {
-		err(1, "open");
-	}
-	int out_fd = open("scratchspace/test.raw",
-	    O_WRONLY | O_CREAT | O_TRUNC,
-	    S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
-	if (out_fd == -1) {
-		err(1, "open");
-	}
+	int in_fd = open_input_file("testdata/test.flac");
+	int out_fd = open_output_file("scratchspace/test.raw");
 
 	pid_t child_pid;
 	int socket;
@@ -201,30 +232,10 @@ START_TEST (child_main_decodes_to_raw_audio_file)
 
 	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
 
-	int rv;
-	rv = imsg_compose(&ibuf, (uint32_t)CMD_SET_INPUT, 0, getpid(), in_fd,
-	    NULL, 0);
-	if (rv != 1) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_compose");
-	}
-	rv = imsg_compose(&ibuf, (uint32_t)CMD_SET_OUTPUT_FILE_RAW, 0, getpid(),
-	    out_fd, NULL, 0);
-	if (rv == -1) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_compose");
-	}
-	rv = imsg_compose(&ibuf, (uint32_t)CMD_PLAY, 0, getpid(), -1, NULL, 0);
-	if (rv == -1) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_compose");
-	}
-
-	rv = imsg_flush(&ibuf);
-	if (rv == -1) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_flush");
-	}
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_RAW, out_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
 
 	wait_for_message(MSG_DONE, child_pid, socket, &ibuf);
 
