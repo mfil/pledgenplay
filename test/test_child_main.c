@@ -24,6 +24,7 @@
 #include <sys/wait.h>
 
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <imsg.h>
 #include <poll.h>
@@ -88,6 +89,23 @@ start_pnp_child(pid_t *child_pid, int *socket)
 }
 
 static void
+kill_pnp_child(pid_t child_pid)
+{
+	kill(child_pid, SIGTERM);
+
+	while (1) {
+		pid_t wait_rv;
+		wait_rv = waitpid(child_pid, NULL, 0);
+		if (wait_rv != -1) {
+			break;
+		}
+		else if (errno != EINTR) {
+			err(1, "waitpid");
+		}
+	}
+}
+
+static void
 wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
     struct imsgbuf *ibuf)
 {
@@ -95,18 +113,18 @@ wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
 	int hello_received = 0;
 	while (! hello_received) {
 		if (poll(&pollfd, 1, 0) == -1) {
-			kill(child_pid, SIGTERM);
+			kill_pnp_child(child_pid);
 			exit(1);
 		}
 		if (pollfd.revents & POLLIN) {
 			if (imsg_read(ibuf) == -1) {
-				kill(child_pid, SIGTERM);
+				kill_pnp_child(child_pid);
 				exit(1);
 			}
 			struct imsg message;
 			ssize_t imsg_get_rv = imsg_get(ibuf, &message);
 			if (imsg_get_rv == -1) {
-				kill(child_pid, SIGTERM);
+				kill_pnp_child(child_pid);
 				exit(1);
 			}
 			if (imsg_get_rv > 0) {
@@ -129,7 +147,7 @@ enqueue_command(struct imsgbuf *ibuf, CMD_MESSAGE_TYPE type, int fd_to_send,
 {
 	if (imsg_compose(ibuf, (uint32_t)type, 0, getpid(), fd_to_send, NULL,
 	    0) == -1) {
-		kill(child_pid, SIGTERM);
+		kill_pnp_child(child_pid);
 		err(1, "imsg_compose");
 	}
 }
@@ -138,7 +156,7 @@ void
 send_commands(struct imsgbuf *ibuf, pid_t child_pid)
 {
 	if (imsg_flush(ibuf) == -1) {
-		kill(child_pid, SIGTERM);
+		kill_pnp_child(child_pid);
 		err(1, "imsg_flush");
 	}
 }
@@ -179,7 +197,7 @@ START_TEST (child_sends_hello_message)
 
 	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
 
-	kill(child_pid, SIGTERM);
+	kill_pnp_child(child_pid);
 }
 END_TEST
 
@@ -213,8 +231,15 @@ START_TEST (child_exits_on_CMD_EXIT)
 
 	ck_assert_int_ne(sigchld_received, 0);
 	int child_status;
-	pid_t wait_rv = waitpid(child_pid, &child_status, 0);
-	ck_assert_int_eq(wait_rv, child_pid);
+	while (1) {
+		pid_t wait_rv = waitpid(child_pid, &child_status, 0);
+		if (wait_rv != -1) {
+			break;
+		}
+		else if (errno != EINTR) {
+			err(1, "waitpid");
+		}
+	}
 	ck_assert_int_ne(WIFEXITED(child_status), 0);
 	ck_assert_int_eq(WEXITSTATUS(child_status), 0);
 }
@@ -250,7 +275,7 @@ START_TEST (child_main_decodes_to_file)
 
 	wait_for_message(MSG_DONE, child_pid, socket, &ibuf);
 
-	kill(child_pid, SIGTERM);
+	kill_pnp_child(child_pid);
 
 	int cmp_rv;
 	const char *const compare[] = {"testdata/test.raw",
