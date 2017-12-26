@@ -208,29 +208,18 @@ START_TEST (child_main_decodes_to_raw_audio_file)
 		kill(child_pid, SIGTERM);
 		err(1, "imsg_compose");
 	}
-	rv = imsg_flush(&ibuf);
-	if (rv != 0) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_flush");
-	}
-
 	rv = imsg_compose(&ibuf, (uint32_t)CMD_SET_OUTPUT_FILE_RAW, 0, getpid(),
 	    out_fd, NULL, 0);
 	if (rv == -1) {
 		kill(child_pid, SIGTERM);
 		err(1, "imsg_compose");
 	}
-	rv = imsg_flush(&ibuf);
-	if (rv == -1) {
-		kill(child_pid, SIGTERM);
-		err(1, "imsg_flush");
-	}
-
 	rv = imsg_compose(&ibuf, (uint32_t)CMD_PLAY, 0, getpid(), -1, NULL, 0);
 	if (rv == -1) {
 		kill(child_pid, SIGTERM);
 		err(1, "imsg_compose");
 	}
+
 	rv = imsg_flush(&ibuf);
 	if (rv == -1) {
 		kill(child_pid, SIGTERM);
