@@ -35,7 +35,35 @@
 
 #include "../message_types.h"
 
-const char *child_main_path = "../obj/pnp_child";
+const char *const pnp_child_path = "../obj/pnp_child";
+
+void
+start_pnp_child(pid_t *child_pid, int *socket)
+{
+	int sockets[2];
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
+		err(1, "socketpair");
+	}
+
+	pid_t fork_rv = fork();
+	if (fork_rv == 0) {
+		close(sockets[0]);
+
+		char *child_socket_as_str;
+		asprintf(&child_socket_as_str, "%d", sockets[1]);
+		if (child_socket_as_str == NULL) {
+			_exit(1);
+		}
+		execl(pnp_child_path, "pnp_child", child_socket_as_str, NULL);
+	}
+	else if (fork_rv == -1) {
+		err(1, "fork");
+	}
+
+	close(sockets[1]);
+	*child_pid = fork_rv;
+	*socket = sockets[0];
+}
 
 static void
 wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
@@ -75,14 +103,14 @@ wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
 
 START_TEST (child_main_exits_if_no_filedescriptor_is_given)
 {
-	execl(child_main_path, "pnp_child", NULL);
+	execl(pnp_child_path, "pnp_child", NULL);
 }
 END_TEST
 
 START_TEST (child_main_exits_if_a_bogus_file_descriptor_is_given)
 {
 	const char *bad_fds[] = {"-1", "23", "100"};
-	execl(child_main_path, "pnp_child", bad_fds[_i], NULL);
+	execl(pnp_child_path, "pnp_child", bad_fds[_i], NULL);
 }
 END_TEST
 
@@ -94,33 +122,20 @@ START_TEST (child_main_exits_if_the_fd_is_not_a_socket)
 	if (fdstr == NULL) {
 		err(2, "asprintf");
 	}
-	execl(child_main_path, "pnp_child", fdstr, NULL);
+	execl(pnp_child_path, "pnp_child", fdstr, NULL);
 }
 END_TEST
 
 START_TEST (child_sends_hello_message)
 {
-	int sockets[2];
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
-		err(1, "socketpair");
-	}
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
 
-	pid_t child_pid = fork();
-	if (child_pid == 0) {
-		close(sockets[0]);
-		char *socketstr;
-		asprintf(&socketstr, "%d", sockets[1]);
-		if (socketstr == NULL) {
-			_exit(1);
-		}
-		execl(child_main_path, "pnp_child", socketstr, NULL);
-	}
-
-	close(sockets[1]);
 	struct imsgbuf ibuf;
-	imsg_init(&ibuf, sockets[0]);
+	imsg_init(&ibuf, socket);
 
-	wait_for_message(MSG_HELLO, child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
 
 	kill(child_pid, SIGTERM);
 }
@@ -138,27 +153,14 @@ signal_handler(int sigraised)
 
 START_TEST (child_exits_on_CMD_EXIT)
 {
-	int sockets[2];
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
-		err(1, "socketpair");
-	}
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
 
-	pid_t child_pid = fork();
-	if (child_pid == 0) {
-		close(sockets[0]);
-		char *socketstr;
-		asprintf(&socketstr, "%d", sockets[1]);
-		if (socketstr == NULL) {
-			_exit(1);
-		}
-		execl(child_main_path, "pnp_child", socketstr, NULL);
-	}
-
-	close(sockets[1]);
 	struct imsgbuf ibuf;
-	imsg_init(&ibuf, sockets[0]);
+	imsg_init(&ibuf, socket);
 
-	wait_for_message(MSG_HELLO, child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
 
 	sigchld_received = 0;
 	signal(SIGCHLD, signal_handler);
@@ -190,27 +192,14 @@ START_TEST (child_main_decodes_to_raw_audio_file)
 		err(1, "open");
 	}
 
-	int sockets[2];
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, sockets) != 0) {
-		err(1, "socketpair");
-	}
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
 
-	pid_t child_pid = fork();
-	if (child_pid == 0) {
-		close(sockets[0]);
-		char *socketstr;
-		asprintf(&socketstr, "%d", sockets[1]);
-		if (socketstr == NULL) {
-			_exit(1);
-		}
-		execl(child_main_path, "pnp_child", socketstr, NULL);
-	}
-
-	close(sockets[1]);
 	struct imsgbuf ibuf;
-	imsg_init(&ibuf, sockets[0]);
+	imsg_init(&ibuf, socket);
 
-	wait_for_message(MSG_HELLO, child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
 
 	int rv;
 	rv = imsg_compose(&ibuf, (uint32_t)CMD_SET_INPUT, 0, getpid(), in_fd,
@@ -248,7 +237,7 @@ START_TEST (child_main_decodes_to_raw_audio_file)
 		err(1, "imsg_flush");
 	}
 
-	wait_for_message(MSG_DONE, child_pid, sockets[0], &ibuf);
+	wait_for_message(MSG_DONE, child_pid, socket, &ibuf);
 
 	kill(child_pid, SIGTERM);
 
