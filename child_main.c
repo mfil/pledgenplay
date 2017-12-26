@@ -75,6 +75,7 @@ main(int argc, char **argv)
 
 		check_for_messages();
 		struct message message;
+		const struct audio_parameters *params = NULL;
 		while (get_next_message(&message) == GOT_MESSAGE) {
 			switch (message.type) {
 			case (CMD_EXIT):
@@ -88,11 +89,21 @@ main(int argc, char **argv)
 				out = output_raw(message.data.fd);
 				break;
 			case (CMD_SET_OUTPUT_FILE_WAV):
+				out = output_wav(message.data.fd);
+				break;
 			case (CMD_SET_OUTPUT_SNDIO):
 				break;
 			case (CMD_META):
 				break;
 			case (CMD_PLAY):
+				params = decoder_get_parameters();
+				if (params == NULL) {
+					child_fatalx("Couldn't get parameters");
+				}
+				if (out->set_parameters(params) ==
+				    OUTPUT_PARAMETERS_ERROR) {
+					child_fatalx("Couldn't set parameters");
+				}
 				playing = 1;
 				break;
 			case (CMD_PAUSE):
