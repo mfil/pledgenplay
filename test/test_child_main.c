@@ -283,6 +283,68 @@ START_TEST (child_main_decodes_to_file)
 }
 END_TEST
 
+START_TEST (child_main_decodes_to_file_repeatedly)
+{
+	const char *const output_files[] = {"scratchspace/test.raw",
+	    "scratchspace/test.wav"};
+	int in_fd = open_input_file("testdata/test.flac");
+	int out_fd = open_output_file(output_files[_i]);
+
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
+
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, socket);
+
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
+
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	if (_i == 0) {
+		enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_RAW, out_fd,
+		    child_pid);
+	}
+	else {
+		enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_WAV, out_fd,
+		    child_pid);
+	}
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
+
+	in_fd = open_input_file("testdata/test.flac");
+	out_fd = open_output_file(output_files[_i]);
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	if (_i == 0) {
+		enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_RAW, out_fd,
+		    child_pid);
+	}
+	else {
+		enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_WAV, out_fd,
+		    child_pid);
+	}
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
+
+	kill_pnp_child(child_pid);
+
+	int cmp_rv;
+	const char *const compare[] = {"testdata/test.raw",
+	    "testdata/test.wav"};
+	char *command;
+	asprintf(&command, "cmp %s %s", output_files[_i],
+	    compare[_i]);
+	if (command == NULL) {
+		err(1, "malloc");
+	}
+	cmp_rv = system(command);
+	ck_assert_int_eq(cmp_rv, 0);
+}
+END_TEST
+
 Suite
 *test_suite(void)
 {
@@ -303,6 +365,8 @@ Suite
 
 	tc_decode = tcase_create("Decoding");
 	tcase_add_loop_test(tc_decode, child_main_decodes_to_file, 0, 2);
+	tcase_add_loop_test(tc_decode, child_main_decodes_to_file_repeatedly,
+	    0, 2);
 
 	suite_add_tcase(s, tc_init);
 	suite_add_tcase(s, tc_decode);

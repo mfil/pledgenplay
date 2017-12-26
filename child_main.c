@@ -84,6 +84,7 @@ main(int argc, char **argv)
 			case (CMD_SET_INPUT):
 				set_new_input_file(message.data.fd);
 				decoder_initialize();
+				decoder_finished = 0;
 				break;
 			case (CMD_SET_OUTPUT_FILE_RAW):
 				out = output_raw(message.data.fd);
@@ -143,6 +144,7 @@ main(int argc, char **argv)
 			if (decoder_finished && status == OUTPUT_IDLE) {
 				playing = 0;
 				out->close();
+				out = NULL;
 				enqueue_message(MSG_DONE, NULL);
 			}
 		}
