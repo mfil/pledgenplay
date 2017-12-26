@@ -27,7 +27,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <imsg.h>
-#include <poll.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -106,37 +105,30 @@ kill_pnp_child(pid_t child_pid)
 }
 
 static void
-wait_for_message(MESSAGE_TYPE expected_type, pid_t child_pid, int socket,
-    struct imsgbuf *ibuf)
+wait_for_message(struct imsgbuf *ibuf, MESSAGE_TYPE expected_type,
+    pid_t child_pid)
 {
-	struct pollfd pollfd = {socket, POLLIN, 0};
 	int hello_received = 0;
 	while (! hello_received) {
-		if (poll(&pollfd, 1, 0) == -1) {
+		if (imsg_read(ibuf) == -1) {
 			kill_pnp_child(child_pid);
 			exit(1);
 		}
-		if (pollfd.revents & POLLIN) {
-			if (imsg_read(ibuf) == -1) {
-				kill_pnp_child(child_pid);
-				exit(1);
+		struct imsg message;
+		ssize_t imsg_get_rv = imsg_get(ibuf, &message);
+		if (imsg_get_rv == -1) {
+			kill_pnp_child(child_pid);
+			exit(1);
+		}
+		if (imsg_get_rv > 0) {
+			int type = (int)message.hdr.type;
+			if (type == MSG_FATAL) {
+				errx(1, "fatal error: %s",
+				    (char *)message.data);
 			}
-			struct imsg message;
-			ssize_t imsg_get_rv = imsg_get(ibuf, &message);
-			if (imsg_get_rv == -1) {
-				kill_pnp_child(child_pid);
-				exit(1);
-			}
-			if (imsg_get_rv > 0) {
-				int type = (int)message.hdr.type;
-				if (type == MSG_FATAL) {
-					errx(1, "fatal error: %s",
-					    (char *)message.data);
-				}
-				ck_assert_int_eq(type, expected_type);
-				hello_received = 1;
-				imsg_free(&message);
-			}
+			ck_assert_int_eq(type, expected_type);
+			hello_received = 1;
+			imsg_free(&message);
 		}
 	}
 }
@@ -195,7 +187,7 @@ START_TEST (child_sends_hello_message)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, socket);
 
-	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
 
 	kill_pnp_child(child_pid);
 }
@@ -220,7 +212,7 @@ START_TEST (child_exits_on_CMD_EXIT)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, socket);
 
-	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
 
 	sigchld_received = 0;
 	signal(SIGCHLD, signal_handler);
@@ -259,7 +251,7 @@ START_TEST (child_main_decodes_to_file)
 	struct imsgbuf ibuf;
 	imsg_init(&ibuf, socket);
 
-	wait_for_message(MSG_HELLO, child_pid, socket, &ibuf);
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
 
 	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
 	if (_i == 0) {
@@ -273,7 +265,7 @@ START_TEST (child_main_decodes_to_file)
 	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
 	send_commands(&ibuf, child_pid);
 
-	wait_for_message(MSG_DONE, child_pid, socket, &ibuf);
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
 
 	kill_pnp_child(child_pid);
 
