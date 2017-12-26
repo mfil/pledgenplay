@@ -345,6 +345,82 @@ START_TEST (child_main_decodes_to_file_repeatedly)
 }
 END_TEST
 
+START_TEST (child_main_can_decode_to_raw_then_wav)
+{
+	int in_fd = open_input_file("testdata/test.flac");
+	int out_fd = open_output_file("scratchspace/test.raw");
+
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
+
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, socket);
+
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
+
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_RAW, out_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
+
+	in_fd = open_input_file("testdata/test.flac");
+	out_fd = open_output_file("scratchspace/test.wav");
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_WAV, out_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
+
+	kill_pnp_child(child_pid);
+
+	int cmp_rv;
+	cmp_rv = system("cmp testdata/test.wav scratchspace/test.wav");
+	ck_assert_int_eq(cmp_rv, 0);
+}
+END_TEST
+
+START_TEST (child_main_can_decode_to_wav_then_raw)
+{
+	int in_fd = open_input_file("testdata/test.flac");
+	int out_fd = open_output_file("scratchspace/test.wav");
+
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
+
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, socket);
+
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
+
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_WAV, out_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
+
+	in_fd = open_input_file("testdata/test.flac");
+	out_fd = open_output_file("scratchspace/test.raw");
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_RAW, out_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_DONE, child_pid);
+
+	kill_pnp_child(child_pid);
+
+	int cmp_rv;
+	cmp_rv = system("cmp testdata/test.raw scratchspace/test.raw");
+	ck_assert_int_eq(cmp_rv, 0);
+}
+END_TEST
+
 Suite
 *test_suite(void)
 {
@@ -367,6 +443,8 @@ Suite
 	tcase_add_loop_test(tc_decode, child_main_decodes_to_file, 0, 2);
 	tcase_add_loop_test(tc_decode, child_main_decodes_to_file_repeatedly,
 	    0, 2);
+	tcase_add_test(tc_decode, child_main_can_decode_to_raw_then_wav);
+	tcase_add_test(tc_decode, child_main_can_decode_to_wav_then_raw);
 
 	suite_add_tcase(s, tc_init);
 	suite_add_tcase(s, tc_decode);
