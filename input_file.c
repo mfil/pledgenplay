@@ -48,7 +48,7 @@ set_new_input_file(int fd)
 
 	input_file.file = fdopen(fd, "rb");
 	if (input_file.file == NULL) {
-		file_err("fdopen failed");
+		input_err("fdopen failed");
 		return (NEW_FILE_FAILURE);
 	}
 
@@ -74,7 +74,7 @@ set_new_input_file(int fd)
 			 * then there was no error, but the file type was
 			 * not recognized. */
 
-			file_errx("failed to determine the file type");
+			input_errx("failed to determine the file type");
 			input_file_close();
 			return (NEW_FILE_FAILURE);
 		}
@@ -96,7 +96,7 @@ detect_id3v2_tag(void)
 	case READ_EOF:
 		/* No music file is less than 3 bytes long. */
 		input_file_close();
-		file_errx("invalid file type");
+		input_errx("invalid file type");
 		/* Fallthrough */
 	case READ_ERROR:
 	case READ_NO_FILE:
@@ -147,7 +147,7 @@ input_file_read(void *buf, size_t length, size_t *bytes_read)
 
 	if (nread < length) {
 		if (ferror(input_file.file)) {
-			file_err("read failed");
+			input_err("read failed");
 			input_file_close();
 			status = READ_ERROR;
 		}
@@ -165,7 +165,7 @@ input_file_seek(long offset)
 		return (SEEK_NO_FILE);
 	}
 	if (fseek(input_file.file, offset, SEEK_CUR)) {
-		file_err("seek failed");
+		input_err("seek failed");
 		input_file_close();
 		return (SEEK_ERROR);
 	}
@@ -179,7 +179,7 @@ input_file_rewind(void)
 		return (SEEK_NO_FILE);
 	}
 	if (fseek(input_file.file, 0, SEEK_SET)) {
-		file_err("rewind failed");
+		input_err("rewind failed");
 		input_file_close();
 		return (SEEK_ERROR);
 	}
@@ -193,7 +193,7 @@ input_file_to_eof(void)
 		return (SEEK_NO_FILE);
 	}
 	if (fseek(input_file.file, 0, SEEK_END)) {
-		file_err("rewind failed");
+		input_err("rewind failed");
 		input_file_close();
 		return (SEEK_ERROR);
 	}

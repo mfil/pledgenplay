@@ -175,7 +175,7 @@ START_TEST (enqueue_message_warns_about_over_long_messages)
 	/* Check if child_warn() is called. */
 
 	child_warn_called = 0;
-	enqueue_message(MSG_ACK, long_message);
+	enqueue_message(MSG_WARN, long_message);
 	ck_assert_int_ne(child_warn_called, 0);
 }
 END_TEST

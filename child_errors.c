@@ -53,24 +53,46 @@ child_warnx(const char *message)
 }
 
 void
-file_err(const char *message)
+input_err(const char *message)
 {
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s: %s", getprogname(),
 	    strerror(errno), message) == -1) {
 		ipc_error("asprintf failed.");
 	}
-	enqueue_message((u_int32_t)MSG_FILE_ERR, full_message);
+	enqueue_message((u_int32_t)MSG_INPUT_ERROR, full_message);
 }
 
 void
-file_errx(const char *message)
+input_errx(const char *message)
 {
 	char *full_message;
 	if (asprintf(&full_message, "%s: %s", getprogname(), message) == -1) {
 		ipc_error("asprintf failed.");
 	}
-	enqueue_message((u_int32_t)MSG_FILE_ERR, full_message);
+	enqueue_message((u_int32_t)MSG_INPUT_ERROR, full_message);
+	free(full_message);
+}
+
+void
+output_err(const char *message)
+{
+	char *full_message;
+	if (asprintf(&full_message, "%s: %s: %s", getprogname(),
+	    strerror(errno), message) == -1) {
+		ipc_error("asprintf failed.");
+	}
+	enqueue_message((u_int32_t)MSG_OUTPUT_ERROR, full_message);
+}
+
+void
+output_errx(const char *message)
+{
+	char *full_message;
+	if (asprintf(&full_message, "%s: %s", getprogname(), message) == -1) {
+		ipc_error("asprintf failed.");
+	}
+	enqueue_message((u_int32_t)MSG_OUTPUT_ERROR, full_message);
 	free(full_message);
 }
 

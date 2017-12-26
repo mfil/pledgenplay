@@ -99,10 +99,10 @@ START_TEST (input_file_calls_file_err_on_invalid_file)
 	if (fd < 0) {
 		err(1, "open");
 	}
-	file_err_called = 0;
+	input_err_called = 0;
 	NEW_FILE_STATUS status = set_new_input_file(fd);
 	ck_assert_int_eq(status, NEW_FILE_FAILURE);
-	ck_assert(file_err_called);
+	ck_assert(input_err_called);
 	ck_assert(!input_file_is_open());
 }
 END_TEST
@@ -165,10 +165,10 @@ START_TEST (cannot_seek_past_end_of_file)
 {
 	set_new_file_and_check("testdata/test.flac");
 
-	file_err_called = 0;
+	input_err_called = 0;
 	SEEK_STATUS status = input_file_seek(1 << 31);
 	ck_assert_int_eq(status, SEEK_ERROR);
-	ck_assert(file_err_called);
+	ck_assert(input_err_called);
 	ck_assert(!input_file_is_open());
 }
 END_TEST

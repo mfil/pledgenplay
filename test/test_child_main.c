@@ -108,8 +108,8 @@ static void
 wait_for_message(struct imsgbuf *ibuf, MESSAGE_TYPE expected_type,
     pid_t child_pid)
 {
-	int hello_received = 0;
-	while (! hello_received) {
+	int expected_message_received = 0;
+	while (! expected_message_received) {
 		if (imsg_read(ibuf) == -1) {
 			kill_pnp_child(child_pid);
 			exit(1);
@@ -127,7 +127,7 @@ wait_for_message(struct imsgbuf *ibuf, MESSAGE_TYPE expected_type,
 				    (char *)message.data);
 			}
 			ck_assert_int_eq(type, expected_type);
-			hello_received = 1;
+			expected_message_received = 1;
 			imsg_free(&message);
 		}
 	}
@@ -234,6 +234,104 @@ START_TEST (child_exits_on_CMD_EXIT)
 	}
 	ck_assert_int_ne(WIFEXITED(child_status), 0);
 	ck_assert_int_eq(WEXITSTATUS(child_status), 0);
+}
+END_TEST
+
+START_TEST (child_main_does_not_run_without_input_and_output)
+{
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
+
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, socket);
+
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
+
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	int input_error_received = 0;
+	int output_error_received = 0;
+	while (! (input_error_received && output_error_received)) {
+		if (imsg_read(&ibuf) == -1) {
+			kill_pnp_child(child_pid);
+			exit(1);
+		}
+		struct imsg message;
+		ssize_t imsg_get_rv;
+		while ((imsg_get_rv = imsg_get(&ibuf, &message)) != 0) {
+			if (imsg_get_rv == -1) {
+				kill_pnp_child(child_pid);
+				exit(1);
+			}
+			int type = (int)message.hdr.type;
+			if (type == MSG_FATAL) {
+				errx(1, "fatal error: %s",
+			    	(char *)message.data);
+			}
+			if (type == MSG_INPUT_ERROR && ! input_error_received) {
+				input_error_received = 1;
+			}
+			else if (type == MSG_OUTPUT_ERROR &&
+			    ! output_error_received) {
+				output_error_received = 1;
+			}
+			else {
+				ck_abort();
+			}
+
+			imsg_free(&message);
+		}
+	}
+
+	kill_pnp_child(child_pid);
+}
+END_TEST
+
+START_TEST (child_main_does_not_run_without_input)
+{
+	int out_fd = open_output_file("scratchspace/test.raw");
+
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
+
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, socket);
+
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
+
+	enqueue_command(&ibuf, CMD_SET_OUTPUT_FILE_RAW, out_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_INPUT_ERROR, child_pid);
+
+	kill_pnp_child(child_pid);
+}
+END_TEST
+
+START_TEST (child_main_does_not_run_without_output)
+{
+	int in_fd = open_input_file("testdata/test.flac");
+
+	pid_t child_pid;
+	int socket;
+	start_pnp_child(&child_pid, &socket);
+
+	struct imsgbuf ibuf;
+	imsg_init(&ibuf, socket);
+
+	wait_for_message(&ibuf, MSG_HELLO, child_pid);
+
+	enqueue_command(&ibuf, CMD_SET_INPUT, in_fd, child_pid);
+	enqueue_command(&ibuf, CMD_PLAY, -1, child_pid);
+	send_commands(&ibuf, child_pid);
+
+	wait_for_message(&ibuf, MSG_OUTPUT_ERROR, child_pid);
+
+	kill_pnp_child(child_pid);
 }
 END_TEST
 
@@ -440,6 +538,10 @@ Suite
 	tcase_add_test(tc_init, child_exits_on_CMD_EXIT);
 
 	tc_decode = tcase_create("Decoding");
+	tcase_add_test(tc_decode,
+	    child_main_does_not_run_without_input_and_output);
+	tcase_add_test(tc_decode, child_main_does_not_run_without_input);
+	tcase_add_test(tc_decode, child_main_does_not_run_without_output);
 	tcase_add_loop_test(tc_decode, child_main_decodes_to_file, 0, 2);
 	tcase_add_loop_test(tc_decode, child_main_decodes_to_file_repeatedly,
 	    0, 2);

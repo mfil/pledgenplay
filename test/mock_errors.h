@@ -4,7 +4,8 @@
 #include <stdio.h>
 
 int child_warn_called;
-int file_err_called;
+int input_err_called;
+int output_err_called;
 
 #define check_for_warning(instruction) \
 	{ \

@@ -16,12 +16,14 @@
 #ifndef	PNP_CHILD_ERRORS_H
 #define	PNP_CHILD_ERRORS_H
 
-void		child_warn(const char *);
-void		child_warnx(const char *);
-void		file_err(const char *);
-void		file_errx(const char *);
-__dead void	child_fatal(const char *);
-__dead void	child_fatalx(const char *);
-__dead void	ipc_error(const char *);
+void child_warn(const char *);
+void child_warnx(const char *);
+void input_err(const char *);
+void input_errx(const char *);
+void output_err(const char *);
+void output_errx(const char *);
+__dead void child_fatal(const char *);
+__dead void child_fatalx(const char *);
+__dead void ipc_error(const char *);
 
 #endif

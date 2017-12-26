@@ -29,6 +29,8 @@
 #include "message_types.h"
 #include "output.h"
 
+static int start_play(const struct output *);
+
 int
 main(int argc, char **argv)
 {
@@ -97,15 +99,7 @@ main(int argc, char **argv)
 			case (CMD_META):
 				break;
 			case (CMD_PLAY):
-				params = decoder_get_parameters();
-				if (params == NULL) {
-					child_fatalx("Couldn't get parameters");
-				}
-				if (out->set_parameters(params) ==
-				    OUTPUT_PARAMETERS_ERROR) {
-					child_fatalx("Couldn't set parameters");
-				}
-				playing = 1;
+				playing = start_play(out);
 				break;
 			case (CMD_PAUSE):
 				break;
@@ -149,4 +143,42 @@ main(int argc, char **argv)
 			}
 		}
 	}
+}
+
+static int
+start_play(const struct output *out)
+{
+	/* Check if the input and output are open. */
+
+	int got_input = 0;
+	int got_output = 0;
+	if (input_file_is_open()) {
+		got_input = 1;
+	}
+	else {
+		input_errx("No input.");
+	}
+	
+	if (out != NULL) {
+		got_output = 1;
+	}
+	else {
+		output_errx("No output.");
+	}
+
+	if (! got_input || ! got_output) {
+		return (0);
+	}
+
+	/* Set output parameters. */
+
+	const struct audio_parameters *params = decoder_get_parameters();
+	if (params == NULL) {
+		child_fatalx("Couldn't get parameters");
+	}
+	if (out->set_parameters(params) == OUTPUT_PARAMETERS_ERROR) {
+		child_fatalx("Couldn't set parameters");
+	}
+
+	return (1);
 }

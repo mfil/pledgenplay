@@ -45,15 +45,27 @@ child_warnx(const char *message)
 }
 
 void
-file_err(const char *message)
+input_err(const char *message)
 {
-	file_err_called = 1;
+	input_err_called = 1;
 }
 
 void
-file_errx(const char *message)
+input_errx(const char *message)
 {
-	file_err_called = 1;
+	input_err_called = 1;
+}
+
+void
+output_err(const char *message)
+{
+	output_err_called = 1;
+}
+
+void
+output_errx(const char *message)
+{
+	output_err_called = 1;
 }
 
 char *

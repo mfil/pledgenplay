@@ -33,14 +33,13 @@ typedef enum {
 
 /* Messages from child to parent. */
 typedef enum {
-	MSG_HELLO,	/* Startup */
-	MSG_ACK,	/* Acknowledge */
-	MSG_NACK,
-	MSG_FILE_ERR,	/* Error reading file */
-	MSG_DONE,	/* Playback/decoding finished */
-	MSG_WARN,	/* Warning */
-	MSG_FATAL,	/* Fatal error; child process exits */
-	META_ARTIST,	/* Child sends metadata */
+	MSG_HELLO,		/* Startup */
+	MSG_DONE,		/* Playback/decoding finished */
+	MSG_WARN,
+	MSG_INPUT_ERROR,
+	MSG_OUTPUT_ERROR,
+	MSG_FATAL,		/* Fatal error; child process exits */
+	META_ARTIST,		/* Child sends metadata */
 	META_TITLE,
 	META_ALBUM,
 	META_TRACKNO,
